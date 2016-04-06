@@ -25,7 +25,9 @@ class ai_agent():
 		while True:
 		#-----your ai operation,This code is a random strategy,please design your ai !!-----------------------
 			self.Get_mapInfo(p_mapinfo)
-
+			print self.mapinfo[0]
+			print self.mapinfo[1]
+			print self.mapinfo[2]
 			print self.mapinfo[3]
 
 			#time.sleep(0.001)
@@ -33,8 +35,8 @@ class ai_agent():
 			for i in range(10000000):
 				q+=1
 
-			shoot = random.randint(0,1)
-			move_dir = random.randint(0,4)
+			shoot = 0 #random.randint(0,1)
+			move_dir = 3 #random.randint(0,4)
 			#-----------
 
 			self.Update_Strategy(c_control,shoot,move_dir)
