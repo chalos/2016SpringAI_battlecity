@@ -1,6 +1,7 @@
 import random
 import time
 import multiprocessing
+import math
 class ai_agent():
 	mapinfo = []
 	def __init__(self):
@@ -25,20 +26,57 @@ class ai_agent():
 		while True:
 		#-----your ai operation,This code is a random strategy,please design your ai !!-----------------------
 			self.Get_mapInfo(p_mapinfo)
-			print self.mapinfo[0]
-			print self.mapinfo[1]
-			print self.mapinfo[2]
-			print self.mapinfo[3]
-
+			print 0,self.mapinfo[0]
+			print 1,self.mapinfo[1]
+			print 2,self.mapinfo[2]
+			print 3,self.mapinfo[3]
+			enemies=self.mapinfo[1]
+			players=self.mapinfo[3]
+			player_mid=[]
+			player_mid.append(players[0][0][0]+13)
+			player_mid.append(players[0][0][1]+13)
+			play_dir=players[0][1]
 			#time.sleep(0.001)
 			q=0
 			for i in range(10000000):
 				q+=1
 
-			shoot = 0 #random.randint(0,1)
-			move_dir = 3 #random.randint(0,4)
-			#-----------
 
+
+			if len(enemies)>0:
+				nearest=0
+				minDist=99999
+				for i in range(len(enemies)):
+					dist=math.sqrt((enemies[i][0][0]-players[0][0][0])*(enemies[i][0][0]-players[0][0][0])+(enemies[i][0][1]-players[0][0][1])*(enemies[i][0][1]-players[0][0][1]))
+					if dist<minDist:
+						nearest=i
+						minDist=dist
+				print "Nearest enemy:",enemies[nearest]
+				if enemies[nearest][0][0]>players[0][0][0]:
+					move_dir=1
+				elif abs(enemies[nearest][0][0]-players[0][0][0])<13:
+					move_dir=move_dir
+				else:
+					move_dir=3
+
+				if enemies[nearest][0][1]>players[0][0][1]:
+					move_dir=2
+				elif abs(enemies[nearest][0][1]-players[0][0][1])<13:
+					move_dir=move_dir
+				else:
+					move_dir=0
+			else:
+				move_dir=4
+
+			#move_dir = 3 #random.randint(0,4)
+			#-----------
+			shoot = 1 #random.randint(0,1)
+			print "Player: ",player_mid,play_dir
+			if player_mid[0]<12*16+35 and player_mid[0]>12*16-3 and move_dir==2:
+				shoot=0
+			if player_mid[1]>24*16-3 and ((player_mid[0]<12*16 and move_dir==1) or (player_mid[0]>12*16+32 and move_dir==3)):
+				shoot=0
+			print "Update: ",shoot,move_dir
 			self.Update_Strategy(c_control,shoot,move_dir)
 		#------------------------------------------------------------------------------------------------------
 
