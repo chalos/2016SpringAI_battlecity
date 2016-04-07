@@ -21,6 +21,9 @@ class ai_agent():
 	# def Get_mapInfo:		fetch the map infomation
 	# def Update_Strategy	Update your strategy
 
+	sameDir=0
+	dirCount=0
+
 	def operations (self,p_mapinfo,c_control):	
 
 		while True:
@@ -47,24 +50,39 @@ class ai_agent():
 				nearest=0
 				minDist=99999
 				for i in range(len(enemies)):
-					dist=math.sqrt((enemies[i][0][0]-players[0][0][0])*(enemies[i][0][0]-players[0][0][0])+(enemies[i][0][1]-players[0][0][1])*(enemies[i][0][1]-players[0][0][1]))
+					dist=math.sqrt((enemies[i][0][0]-208)*(enemies[i][0][0]-208)+(enemies[i][0][1]-400)*(enemies[i][0][1]-400))
 					if dist<minDist:
 						nearest=i
 						minDist=dist
 				print "Nearest enemy:",enemies[nearest]
-				if enemies[nearest][0][0]>players[0][0][0]:
-					move_dir=1
-				elif abs(enemies[nearest][0][0]-players[0][0][0])<13:
-					move_dir=move_dir
+				if self.dirCount==0:
+					if enemies[nearest][0][0]>players[0][0][0]:
+						move_dir=1
+					elif abs(enemies[nearest][0][0]-players[0][0][0])<13:
+						move_dir=move_dir
+					else:
+						move_dir=3
+					if enemies[nearest][0][1]>players[0][0][1]:
+						move_dir=2
+					elif abs(enemies[nearest][0][1]-players[0][0][1])<13:
+						move_dir=move_dir
+					else:
+						move_dir=0
+					self.dirCount=1
 				else:
-					move_dir=3
-
-				if enemies[nearest][0][1]>players[0][0][1]:
-					move_dir=2
-				elif abs(enemies[nearest][0][1]-players[0][0][1])<13:
-					move_dir=move_dir
-				else:
-					move_dir=0
+					if enemies[nearest][0][1]>players[0][0][1]:
+						move_dir=2
+					elif abs(enemies[nearest][0][1]-players[0][0][1])<13:
+						move_dir=move_dir
+					else:
+						move_dir=0
+					if enemies[nearest][0][0]>players[0][0][0]:
+						move_dir=1
+					elif abs(enemies[nearest][0][0]-players[0][0][0])<13:
+						move_dir=move_dir
+					else:
+						move_dir=3
+					self.dirCount=0
 			else:
 				move_dir=4
 
@@ -72,9 +90,9 @@ class ai_agent():
 			#-----------
 			shoot = 1 #random.randint(0,1)
 			print "Player: ",player_mid,play_dir
-			if player_mid[0]<12*16+35 and player_mid[0]>12*16-3 and move_dir==2:
+			if player_mid[0]<12*16+42 and player_mid[0]>12*16-10 and move_dir==2:
 				shoot=0
-			if player_mid[1]>24*16-3 and ((player_mid[0]<12*16 and move_dir==1) or (player_mid[0]>12*16+32 and move_dir==3)):
+			if player_mid[1]>24*16-20 and ((player_mid[0]<12*16 and move_dir==1) or (player_mid[0]>12*16+32 and move_dir==3)):
 				shoot=0
 			print "Update: ",shoot,move_dir
 			self.Update_Strategy(c_control,shoot,move_dir)
