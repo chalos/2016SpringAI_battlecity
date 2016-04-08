@@ -1,0 +1,7 @@
+Install custom pyneurgen:
+
+If you have installed old version
+sudo pip uninstall pyneurgen
+
+cd pyneurgen-0.3.1/
+sudo python setup.py install

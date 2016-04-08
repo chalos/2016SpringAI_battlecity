@@ -47,21 +47,24 @@ class ai_agent():
 
 		while True:
 		#-----your ai operation,This code is a random strategy,please design your ai !!-----------------------
+			while c_control.empty==False:
+				time.sleep(0.01)
+				pass
 			self.Get_mapInfo(p_mapinfo)
-			print 0,self.mapinfo[0]
-			print 1,self.mapinfo[1]
-			print 2,self.mapinfo[2]
-			print 3,self.mapinfo[3]
+			#print 0,self.mapinfo[0]
+			#print 1,self.mapinfo[1]
+			#print 2,self.mapinfo[2]
+			#print 3,self.mapinfo[3]
 			enemies=self.mapinfo[1]
 			players=self.mapinfo[3]
 			player_mid=[]
 			player_mid.append(players[0][0][0]+13)
 			player_mid.append(players[0][0][1]+13)
 			play_dir=players[0][1]
-			#time.sleep(0.001)
-			q=0
-			for i in range(10000000):
-				q+=1
+			#time.sleep(0.01)
+			#q=0
+			#for i in range(5000000):
+			#	q+=1
 
 
 
@@ -73,7 +76,7 @@ class ai_agent():
 					if dist<minDist:
 						nearest=i
 						minDist=dist
-				print "Nearest enemy:",enemies[nearest]
+				#print "Nearest enemy:",enemies[nearest]
 				if self.dirCount==0:
 					if enemies[nearest][0][0]>players[0][0][0]:
 						move_dir=1
@@ -108,12 +111,12 @@ class ai_agent():
 			#move_dir = 3 #random.randint(0,4)
 			#-----------
 			shoot = 1 #random.randint(0,1)
-			print "Player: ",player_mid,play_dir
+			#print "Player: ",player_mid,play_dir
 			if player_mid[0]<12*16+42 and player_mid[0]>12*16-10 and move_dir==2:
 				shoot=0
 			if player_mid[1]>24*16-20 and ((player_mid[0]<12*16 and move_dir==1) or (player_mid[0]>12*16+32 and move_dir==3)):
 				shoot=0
-			print "Update: ",shoot,move_dir
+			#print "Update: ",shoot,move_dir
 			self.Update_Strategy(c_control,shoot,move_dir)
 		#------------------------------------------------------------------------------------------------------
 
@@ -2093,7 +2096,7 @@ class Game():
 							player.bonus = None
 					elif player.state == player.STATE_DEAD:
 						self.superpowers = 0
-						player.lives -= 1
+						player.lives -= 1                           #fitness
 						if player.lives > 0:
 							self.respawnPlayer(player)
 						else:
@@ -2117,7 +2120,7 @@ class Game():
 					labels.remove(label)
 
 			if not self.game_over:
-				if not castle.active:
+				if not castle.active:                             #fitness
 					self.kill_ai_process(p)
 					self.clear_queue(p_mapinfo)
 					self.clear_queue(c_control)
@@ -2162,26 +2165,29 @@ class Game():
 			except Queue.Empty:
 				print "Queue already is empty!!"
 
-print __name__
-if __name__ == '__builtin__':
-	self.set_bnf_variable('<fitness>', 123.0)
-	gtimer = Timer()
 
-	sprites = None
-	screen = None
-	players = []
-	enemies = []
-	bullets = []
-	bonuses = []
-	labels = []
 
-	play_sounds = False
-	sounds = {}
-	gen = self
+#if __name__ == 'pyneurgen.genotypes':
 
-	game = Game()
-	castle = Castle()
-	game.showMenu()
+print self
+self.set_bnf_variable('<fitness>', 123.0)
+gtimer = Timer()
+
+sprites = None
+screen = None
+players = []
+enemies = []
+bullets = []
+bonuses = []
+labels = []
+
+play_sounds = False
+sounds = {}
+gen = self
+
+game = Game()
+castle = Castle()
+game.showMenu()
 
         """
 
