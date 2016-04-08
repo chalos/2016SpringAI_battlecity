@@ -66,8 +66,6 @@ class ai_agent():
 			#for i in range(5000000):
 			#	q+=1
 
-
-
 			if len(enemies)>0:
 				nearest=0
 				minDist=99999
