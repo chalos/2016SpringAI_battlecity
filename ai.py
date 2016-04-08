@@ -1,6 +1,7 @@
 import random
 import time
 import multiprocessing
+
 import math
 class ai_agent():
 	mapinfo = []

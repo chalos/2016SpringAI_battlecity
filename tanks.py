@@ -1,15 +1,135 @@
 #!/usr/bin/python
 # coding=utf-8
-
+from pyneurgen.grammatical_evolution import GrammaticalEvolution
+from pyneurgen.fitness import FitnessElites, FitnessTournament
+from pyneurgen.fitness import ReplacementTournament, MAX, MIN, CENTER
 import os, pygame, time, random, uuid, sys
-import ai
 import copy, random
 import threading
 import multiprocessing
 import Queue
+import math
+
+bnf =   """
+<S>                 ::=
+
+import os
+import pygame, time, random, uuid, sys
+import copy, random
+import threading
+import multiprocessing
+import Queue
+import math
+
+class ai_agent():
+	mapinfo = []
+	def __init__(self):
+		self.mapinfo = []
+
+	# rect:					[left, top, width, height]
+	# rect_type:			0:empty 1:brick 2:steel 3:water 4:grass 5:froze
+	# castle_rect:			[12*16, 24*16, 32, 32]
+	# mapinfo[0]: 			bullets [rect, direction, speed]]
+	# mapinfo[1]: 			enemies [rect, direction, speed, type]]
+	# enemy_type:			0:TYPE_BASIC 1:TYPE_FAST 2:TYPE_POWER 3:TYPE_ARMOR
+	# mapinfo[2]: 			tile 	[rect, type] (empty don't be stored to mapinfo[2])
+	# mapinfo[3]: 			player 	[rect, direction, speed, Is_shielded]]
+	# shoot:				0:none 1:shoot
+	# move_dir:				0:Up 1:Right 2:Down 3:Left 4:None
+
+	# def Get_mapInfo:		fetch the map infomation
+	# def Update_Strategy	Update your strategy
+
+	sameDir=0
+	dirCount=0
+
+	def operations (self,p_mapinfo,c_control):
+
+		while True:
+		#-----your ai operation,This code is a random strategy,please design your ai !!-----------------------
+			self.Get_mapInfo(p_mapinfo)
+			print 0,self.mapinfo[0]
+			print 1,self.mapinfo[1]
+			print 2,self.mapinfo[2]
+			print 3,self.mapinfo[3]
+			enemies=self.mapinfo[1]
+			players=self.mapinfo[3]
+			player_mid=[]
+			player_mid.append(players[0][0][0]+13)
+			player_mid.append(players[0][0][1]+13)
+			play_dir=players[0][1]
+			#time.sleep(0.001)
+			q=0
+			for i in range(10000000):
+				q+=1
+
+
+
+			if len(enemies)>0:
+				nearest=0
+				minDist=99999
+				for i in range(len(enemies)):
+					dist=math.sqrt((enemies[i][0][0]-208)*(enemies[i][0][0]-208)+(enemies[i][0][1]-400)*(enemies[i][0][1]-400))
+					if dist<minDist:
+						nearest=i
+						minDist=dist
+				print "Nearest enemy:",enemies[nearest]
+				if self.dirCount==0:
+					if enemies[nearest][0][0]>players[0][0][0]:
+						move_dir=1
+					elif abs(enemies[nearest][0][0]-players[0][0][0])<13:
+						move_dir=move_dir
+					else:
+						move_dir=3
+					if enemies[nearest][0][1]>players[0][0][1]:
+						move_dir=2
+					elif abs(enemies[nearest][0][1]-players[0][0][1])<13:
+						move_dir=move_dir
+					else:
+						move_dir=0
+					self.dirCount=1
+				else:
+					if enemies[nearest][0][1]>players[0][0][1]:
+						move_dir=2
+					elif abs(enemies[nearest][0][1]-players[0][0][1])<13:
+						move_dir=move_dir
+					else:
+						move_dir=0
+					if enemies[nearest][0][0]>players[0][0][0]:
+						move_dir=1
+					elif abs(enemies[nearest][0][0]-players[0][0][0])<13:
+						move_dir=move_dir
+					else:
+						move_dir=3
+					self.dirCount=0
+			else:
+				move_dir=4
+
+			#move_dir = 3 #random.randint(0,4)
+			#-----------
+			shoot = 1 #random.randint(0,1)
+			print "Player: ",player_mid,play_dir
+			if player_mid[0]<12*16+42 and player_mid[0]>12*16-10 and move_dir==2:
+				shoot=0
+			if player_mid[1]>24*16-20 and ((player_mid[0]<12*16 and move_dir==1) or (player_mid[0]>12*16+32 and move_dir==3)):
+				shoot=0
+			print "Update: ",shoot,move_dir
+			self.Update_Strategy(c_control,shoot,move_dir)
+		#------------------------------------------------------------------------------------------------------
+
+	def Get_mapInfo(self,p_mapinfo):
+		if p_mapinfo.empty()!=True:
+			try:
+				self.mapinfo = p_mapinfo.get(False)
+			except Queue.Empty:
+				skip_this=True
+
+	def Update_Strategy(self,c_control,shoot,move_dir):
+		if c_control.empty() ==True:
+			c_control.put([shoot,move_dir])
+
 
 class myRect(pygame.Rect):
-	""" Add type property """
 	def __init__(self, left, top, width, height, type):
 		self.rect=pygame.Rect.__init__(self, left, top, width, height)
 		self.type = type
@@ -54,7 +174,7 @@ class Timer(object):
 						pass
 
 class Castle():
-	""" Player's castle/fortress """
+
 
 	(STATE_STANDING, STATE_DESTROYED, STATE_EXPLODING) = range(3)
 
@@ -73,7 +193,6 @@ class Castle():
 		self.rebuild()
 
 	def draw(self):
-		""" Draw castle """
 		global screen
 
 		screen.blit(self.image, self.rect.topleft)
@@ -86,31 +205,17 @@ class Castle():
 				self.explosion.draw()
 
 	def rebuild(self):
-		""" Reset castle """
 		self.state = self.STATE_STANDING
 		self.image = self.img_undamaged
 		self.active = True
 
 	def destroy(self):
-		""" Destroy castle """
 		self.state = self.STATE_EXPLODING
 		self.explosion = Explosion(self.rect.topleft)
 		self.image = self.img_destroyed
 		self.active = False
 
 class Bonus():
-	""" Various power-ups
-	When bonus is spawned, it begins flashing and after some time dissapears
-
-	Available bonusses:
-		grenade	: Picking up the grenade power up instantly wipes out ever enemy presently on the screen, including Armor Tanks regardless of how many times you've hit them. You do not, however, get credit for destroying them during the end-stage bonus points.
-		helmet	: The helmet power up grants you a temporary force field that makes you invulnerable to enemy shots, just like the one you begin every stage with.
-		shovel	: The shovel power up turns the walls around your fortress from brick to stone. This makes it impossible for the enemy to penetrate the wall and destroy your fortress, ending the game prematurely. The effect, however, is only temporary, and will wear off eventually.
-		star		: The star power up grants your tank with new offensive power each time you pick one up, up to three times. The first star allows you to fire your bullets as fast as the power tanks can. The second star allows you to fire up to two bullets on the screen at one time. And the third star allows your bullets to destroy the otherwise unbreakable steel walls. You carry this power with you to each new stage until you lose a life.
-		tank		: The tank power up grants you one extra life. The only other way to get an extra life is to score 20000 points.
-		timer		: The timer power up temporarily freezes time, allowing you to harmlessly approach every tank and destroy them until the time freeze wears off.
-	"""
-
 	# bonus types
 	(BONUS_GRENADE, BONUS_HELMET, BONUS_SHOVEL, BONUS_STAR, BONUS_TANK, BONUS_TIMER) = range(6)
 
@@ -141,13 +246,11 @@ class Bonus():
 		self.image = sprites.subsurface(16*2*self.bonus, 32*2, 16*2, 15*2)
 
 	def draw(self):
-		""" draw bonus """
 		global screen
 		if self.visible:
 			screen.blit(self.image, self.rect.topleft)
 
 	def toggleVisibility(self):
-		""" Toggle bonus visibility """
 		self.visible = not self.visible
 
 
@@ -200,7 +303,6 @@ class Bullet():
 		self.state = self.STATE_ACTIVE
 
 	def draw(self):
-		""" draw bullet """
 		global screen
 		if self.state == self.STATE_ACTIVE:
 			screen.blit(self.image, self.rect.topleft)
@@ -218,7 +320,6 @@ class Bullet():
 		if self.state != self.STATE_ACTIVE:
 			return
 
-		""" move bullet """
 		if self.direction == self.DIR_UP:
 			self.rect.topleft = [self.rect.left, self.rect.top - self.speed]
 			if self.rect.top < 0:
@@ -290,7 +391,7 @@ class Bullet():
 			return
 
 	def explode(self):
-		""" start bullets's explosion """
+
 		global screen
 		if self.state != self.STATE_REMOVED:
 			self.state = self.STATE_EXPLODING
@@ -315,7 +416,6 @@ class Label():
 			gtimer.add(duration, lambda :self.destroy(), 1)
 
 	def draw(self):
-		""" draw label """
 		global screen
 		screen.blit(self.font.render(self.text, False, (200,200,200)), [self.position[0]+4, self.position[1]+8])
 
@@ -351,11 +451,9 @@ class Explosion():
 
 	def draw(self):
 		global screen
-		""" draw current explosion frame """
 		screen.blit(self.image, self.position)
 
 	def update(self):
-		""" Advace to the next image """
 		if len(self.images) > 0:
 			self.image = self.images.pop()
 		else:
@@ -370,8 +468,6 @@ class Level():
 	TILE_SIZE = 16
 
 	def __init__(self, level_nr = None):
-		""" There are total 35 different levels. If level_nr is larger than 35, loop over
-		to next according level so, for example, if level_nr ir 37, then load level 2 """
 
 		global sprites
 
@@ -414,11 +510,6 @@ class Level():
 		gtimer.add(400, lambda :self.toggleWaves())
 
 	def hitTile(self, pos, power = 1, sound = False):
-		"""
-			Hit the tile
-			@param pos Tile's x, y in px
-			@return True if bullet was stopped, False otherwise
-		"""
 
 		global play_sounds, sounds
 
@@ -441,7 +532,6 @@ class Level():
 					return False
 
 	def toggleWaves(self):
-		""" Toggle water image """
 		if self.tile_water == self.tile_water1:
 			self.tile_water = self.tile_water2
 		else:
@@ -449,15 +539,12 @@ class Level():
 
 
 	def loadLevel(self, level_nr = 1):
-		""" Load specified level
-		@return boolean Whether level was loaded
-		"""
 		filename = "levels/"+str(level_nr)
 		if (not os.path.isfile(filename)):
 			return False
 		level = []
 		f = open(filename, "r")
-		data = f.read().split("\n")
+		data = f.read().split("\\n")
 		self.mapr = []
 		x, y = 0, 0
 		for row in data:
@@ -479,7 +566,6 @@ class Level():
 
 
 	def draw(self, tiles = None):
-		""" Draw specified map on top of existing surface """
 
 		global screen
 
@@ -500,8 +586,6 @@ class Level():
 					screen.blit(self.tile_grass, tile.topleft)
 
 	def updateObstacleRects(self):
-		""" Set self.obstacle_rects to all tiles' rects that players can destroy
-		with bullets """
 
 		global castle
 
@@ -512,7 +596,6 @@ class Level():
 				self.obstacle_rects.append(tile)
 
 	def buildFortress(self, tile):
-		""" Build walls around castle made from tile """
 
 		positions = [
 			(11*self.TILE_SIZE, 23*self.TILE_SIZE),
@@ -627,15 +710,11 @@ class Tank():
 		self.timer_uuid_spawn_end = gtimer.add(1000, lambda :self.endSpawning())
 
 	def endSpawning(self):
-		""" End spawning
-		Player becomes operational
-		"""
 		self.state = self.STATE_ALIVE
 		gtimer.destroy(self.timer_uuid_spawn_end)
 
 
 	def toggleSpawnImage(self):
-		""" advance to the next spawn image """
 		if self.state != self.STATE_SPAWNING:
 			gtimer.destroy(self.timer_uuid_spawn)
 			return
@@ -645,7 +724,6 @@ class Tank():
 		self.spawn_image = self.spawn_images[self.spawn_index]
 
 	def toggleShieldImage(self):
-		""" advance to the next shield image """
 		if self.state != self.STATE_ALIVE:
 			gtimer.destroy(self.timer_uuid_shield)
 			return
@@ -657,7 +735,7 @@ class Tank():
 
 
 	def draw(self):
-		""" draw tank """
+
 		global screen
 		if self.state == self.STATE_ALIVE:
 			screen.blit(self.image, self.rect.topleft)
@@ -669,7 +747,7 @@ class Tank():
 			screen.blit(self.spawn_image, self.rect.topleft)
 
 	def explode(self):
-		""" start tanks's explosion """
+
 		if self.state != self.STATE_DEAD:
 			self.state = self.STATE_EXPLODING
 			self.explosion = Explosion(self.rect.topleft)
@@ -678,11 +756,6 @@ class Tank():
 				self.spawnBonus()
 
 	def fire(self, forced = False):
-		""" Shoot a bullet
-		@param boolean forced. If false, check whether tank has exceeded his bullet quota. Default: True
-		@return boolean True if bullet was fired, false otherwise
-		"""
-
 		global bullets, labels
 
 		if self.state != self.STATE_ALIVE:
@@ -721,9 +794,6 @@ class Tank():
 		return True
 
 	def rotate(self, direction, fix_position = True):
-		""" Rotate tank
-		rotate, update image and correct position
-		"""
 		self.direction = direction
 
 		if direction == self.DIR_UP:
@@ -746,30 +816,22 @@ class Tank():
 				self.rect.top = new_y
 
 	def turnAround(self):
-		""" Turn tank into opposite direction """
 		if self.direction in (self.DIR_UP, self.DIR_RIGHT):
 			self.rotate(self.direction + 2, False)
 		else:
 			self.rotate(self.direction - 2, False)
 
 	def update(self, time_passed):
-		""" Update timer and explosion (if any) """
 		if self.state == self.STATE_EXPLODING:
 			if not self.explosion.active:
 				self.state = self.STATE_DEAD
 				del self.explosion
 
 	def nearest(self, num, base):
-		""" Round number to nearest divisible """
 		return int(round(num / (base * 1.0)) * base)
 
 
 	def bulletImpact(self, friendly_fire = False, damage = 100, tank = None):
-		""" Bullet impact
-		Return True if bullet should be destroyed on impact. Only enemy friendly-fire
-		doesn't trigger bullet explosion
-		"""
-
 		global play_sounds, sounds
 
 		if self.shielded:
@@ -799,10 +861,7 @@ class Tank():
 			return True
 
 	def setParalised(self, paralised = True):
-		""" set tank paralise state
-		@param boolean paralised
-		@return None
-		"""
+
 		if self.state != self.STATE_ALIVE:
 			gtimer.destroy(self.timer_uuid_paralise)
 			return
@@ -894,7 +953,7 @@ class Enemy(Tank):
 			self.timer_uuid_flash = gtimer.add(200, lambda :self.toggleFlash())
 
 	def toggleFlash(self):
-		""" Toggle flash state """
+
 		if self.state not in (self.STATE_ALIVE, self.STATE_SPAWNING):
 			gtimer.destroy(self.timer_uuid_flash)
 			return
@@ -912,7 +971,6 @@ class Enemy(Tank):
 		self.rotate(self.direction, False)
 
 	def spawnBonus(self):
-		""" Create new bonus if needed """
 
 		global bonuses
 
@@ -964,7 +1022,7 @@ class Enemy(Tank):
 		return False
 
 	def move(self):
-		""" move enemy if possible """
+
 
 		global players, enemies, bonuses
 
@@ -1030,8 +1088,6 @@ class Enemy(Tank):
 			self.move()
 
 	def generatePath(self, direction = None, fix_direction = False):
-		""" If direction is specified, try continue that way, otherwise choose at random
-		"""
 
 		all_directions = [self.DIR_UP, self.DIR_RIGHT, self.DIR_DOWN, self.DIR_LEFT]
 
@@ -1170,7 +1226,6 @@ class Player(Tank):
 			self.rotate(direction, False)
 
 	def move(self, direction):
-		""" move player if possible """
 
 		global players, enemies, bonuses
 
@@ -1232,7 +1287,7 @@ class Player(Tank):
 		self.rect.topleft = (new_position[0], new_position[1])
 
 	def reset(self):
-		""" reset player """
+
 		self.rotate(self.start_direction, False)
 		self.rect.topleft = self.start_position
 		self.superpowers = 0
@@ -1327,7 +1382,6 @@ class Game():
 
 
 	def triggerBonus(self, bonus, player):
-		""" Execute bonus powers """
 
 		global enemies, labels, play_sounds, sounds
 
@@ -1359,11 +1413,7 @@ class Game():
 		labels.append(Label(bonus.rect.topleft, "500", 500))
 
 	def shieldPlayer(self, player, shield = True, duration = None):
-		""" Add/remove shield
-		player: player (not enemy)
-		shield: true/false
-		duration: in ms. if none, do not remove shield automatically
-		"""
+
 		player.shielded = shield
 		if shield:
 			player.timer_uuid_shield = gtimer.add(100, lambda :player.toggleShieldImage())
@@ -1375,12 +1425,6 @@ class Game():
 
 
 	def spawnEnemy(self):
-		""" Spawn new enemy if needed
-		Only add enemy if:
-			- there are at least one in queue
-			- map capacity hasn't exceeded its quota
-			- now isn't timefreeze
-		"""
 
 		global enemies
 
@@ -1394,7 +1438,7 @@ class Game():
 
 
 	def respawnPlayer(self, player, clear_scores = False):
-		""" Respawn player """
+
 		player.reset()
 
 		if clear_scores:
@@ -1405,11 +1449,12 @@ class Game():
 		self.shieldPlayer(player, True, 4000)
 
 	def gameOver(self):
-		""" End game and return to menu """
 
-		global play_sounds, sounds
+		global play_sounds, sounds, gen
 
 		print "Game Over"
+		print "Score:",players[0].score
+		gen.set_bnf_variable('<fitness>', players[0].score/1.0)
 		if play_sounds:
 			for sound in sounds:
 				sounds[sound].stop()
@@ -1419,9 +1464,9 @@ class Game():
 
 		self.game_over = True
 		gtimer.add(3000, lambda :self.showScores(), 1)
+		sys.exit()
 
 	def gameOverScreen(self):
-		""" Show game over screen """
 
 		global screen
 
@@ -1445,10 +1490,6 @@ class Game():
 						return
 
 	def showMenu(self):
-		""" Show game menu
-		Redraw screen only when up or down key is pressed. When enter is pressed,
-		exit from this screen and start the game with selected number of players
-		"""
 
 		global players, screen
 
@@ -1461,36 +1502,33 @@ class Game():
 		# set current stage to 0
 		self.stage = 0
 
-		self.animateIntroScreen()
+		#self.animateIntroScreen()
 
-		main_loop = True
-		while main_loop:
-			time_passed = self.clock.tick(50)
-
-			for event in pygame.event.get():
-				if event.type == pygame.QUIT:
-					quit()
-				elif event.type == pygame.KEYDOWN:
-					if event.key == pygame.K_q:
-						quit()
-					elif event.key == pygame.K_UP:
-						if self.nr_of_players == 2:
-							self.nr_of_players = 1
-							self.drawIntroScreen()
-					elif event.key == pygame.K_DOWN:
-						if self.nr_of_players == 1:
-							self.nr_of_players = 2
-							self.drawIntroScreen()
-					elif event.key == pygame.K_RETURN:
-						main_loop = False
+		# main_loop = True
+		# while main_loop:
+		# 	time_passed = self.clock.tick(50)
+		#
+		# 	for event in pygame.event.get():
+		# 		if event.type == pygame.QUIT:
+		# 			quit()
+		# 		elif event.type == pygame.KEYDOWN:
+		# 			if event.key == pygame.K_q:
+		# 				quit()
+		# 			elif event.key == pygame.K_UP:
+		# 				if self.nr_of_players == 2:
+		# 					self.nr_of_players = 1
+		# 					self.drawIntroScreen()
+		# 			elif event.key == pygame.K_DOWN:
+		# 				if self.nr_of_players == 1:
+		# 					self.nr_of_players = 2
+		# 					self.drawIntroScreen()
+		# 			elif event.key == pygame.K_RETURN:
+		# 				main_loop = False
 
 		del players[:]
 		self.nextLevel()
 
 	def reloadPlayers(self):
-		""" Init players
-		If players already exist, just reset them
-		"""
 
 		global players
 
@@ -1519,7 +1557,6 @@ class Game():
 			self.respawnPlayer(player, True)
 
 	def showScores(self):
-		""" Show level scores """
 
 		global screen, sprites, players, play_sounds, sounds
 
@@ -1729,10 +1766,6 @@ class Game():
 
 
 	def drawIntroScreen(self, put_on_surface = True):
-		""" Draw intro (menu) screen
-		@param boolean put_on_surface If True, flip display after drawing
-		@return None
-		"""
 
 		global screen
 
@@ -1763,10 +1796,6 @@ class Game():
 			pygame.display.flip()
 
 	def animateIntroScreen(self):
-		""" Slide intro (menu) screen from bottom to top
-		If Enter key is pressed, finish animation immediately
-		@return None
-		"""
 
 		global screen
 
@@ -1793,21 +1822,9 @@ class Game():
 
 
 	def chunks(self, l, n):
-		""" Split text string in chunks of specified size
-		@param string l Input string
-		@param int n Size (number of characters) of each chunk
-		@return list
-		"""
 		return [l[i:i+n] for i in range(0, len(l), n)]
 
 	def writeInBricks(self, text, pos):
-		""" Write specified text in "brick font"
-		Only those letters are available that form words "Battle City" and "Game Over"
-		Both lowercase and uppercase are valid input, but output is always uppercase
-		Each letter consists of 7x7 bricks which is converted into 49 character long string
-		of 1's and 0's which in turn is then converted into hex to save some bytes
-		@return None
-		"""
 
 		global screen, sprites
 
@@ -1865,7 +1882,6 @@ class Game():
 			abs_x += letter_w + 16
 
 	def toggleEnemyFreeze(self, freeze = True):
-		""" Freeze/defreeze all enemies """
 
 		global enemies
 
@@ -1875,42 +1891,13 @@ class Game():
 
 
 	def loadHiscore(self):
-		""" Load hiscore
-		Really primitive version =] If for some reason hiscore cannot be loaded, return 20000
-		@return int
-		"""
-		filename = ".hiscore"
-		if (not os.path.isfile(filename)):
-			return 20000
-
-		f = open(filename, "r")
-		hiscore = int(f.read())
-
-		if hiscore > 19999 and hiscore < 1000000:
-			return hiscore
-		else:
-			print "cheater =["
-			return 20000
+		return 999999
 
 	def saveHiscore(self, hiscore):
-		""" Save hiscore
-		@return boolean
-		"""
-		try:
-			f = open(".hiscore", "w")
-		except:
-			print "Can't save hi-score"
-			return False
-		f.write(str(hiscore))
-		f.close()
 		return True
 
 
 	def finishLevel(self):
-		""" Finish current level
-		Show earned scores and advance to the next stage
-		"""
-
 		global play_sounds, sounds
 
 		if play_sounds:
@@ -1922,7 +1909,6 @@ class Game():
 		print "Stage "+str(self.stage)+" completed"
 
 	def nextLevel(self):
-		""" Start next level """
 
 		global castle, players, bullets, bonuses, play_sounds, sounds
 
@@ -1978,7 +1964,7 @@ class Game():
 		self.draw()
 
 		#----------------------
-		self.agent=ai.ai_agent()
+		self.agent=ai_agent()
 
 		p_mapinfo = multiprocessing.Queue()
 		c_control = multiprocessing.Queue()
@@ -1986,7 +1972,7 @@ class Game():
 		mapinfo=self.get_mapinfo()
 		self.agent.mapinfo = mapinfo
 		if p_mapinfo.empty() ==True:
-			p_mapinfo.put(mapinfo)	
+			p_mapinfo.put(mapinfo)
 
 		operations = [0,4]
 
@@ -2141,7 +2127,7 @@ class Game():
 
 			self.draw()
 
-	
+
 	def get_mapinfo(self):
 		global players, bullets
 		mapinfo=[]
@@ -2176,10 +2162,9 @@ class Game():
 			except Queue.Empty:
 				print "Queue already is empty!!"
 
-
-
-if __name__ == "__main__":
-
+print __name__
+if __name__ == '__builtin__':
+	self.set_bnf_variable('<fitness>', 123.0)
 	gtimer = Timer()
 
 	sprites = None
@@ -2190,9 +2175,41 @@ if __name__ == "__main__":
 	bonuses = []
 	labels = []
 
-	play_sounds = True
+	play_sounds = False
 	sounds = {}
+	gen = self
 
 	game = Game()
 	castle = Castle()
 	game.showMenu()
+
+        """
+
+ges = GrammaticalEvolution()
+
+ges.set_bnf(bnf)
+ges.set_genotype_length(start_gene_length=100, max_gene_length=200)
+
+ges.set_population_size(5)
+ges.set_max_generations(1)
+ges.set_fitness_type(MAX, 200000.0)
+
+ges.set_max_program_length(400000000)
+
+ges.set_wrap(True)
+ges.set_fitness_fail(0.0)
+ges.set_mutation_type('m')
+ges.set_max_fitness_rate(.25)
+ges.set_mutation_rate(.025)
+ges.set_fitness_selections(FitnessElites(ges.fitness_list, .05), FitnessTournament(ges.fitness_list, tournament_size=2))
+
+ges.set_crossover_rate(.2)
+ges.set_children_per_crossover(2)
+
+ges.set_replacement_selections(ReplacementTournament(ges.fitness_list, tournament_size=3))
+
+ges.set_maintain_history(True)
+ges.set_timeouts(100, 300)
+
+ges.create_genotypes()
+print ges.run()
