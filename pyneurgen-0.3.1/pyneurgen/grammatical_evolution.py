@@ -277,7 +277,17 @@ class GrammaticalEvolution(object):
             if item.find('::=') >= 0:
                 key, values = item.split('::=')
                 key = key.strip()
-                bnf_dict[key] = strip_spaces(key, values)
+                if values.strip() == 'NEWLINE':
+                    value = []
+                    value.append('\n');
+                    bnf_dict[key] = value
+                elif values.strip() == 'INDENT':
+                    value = []
+                    value.append('\t');
+                    bnf_dict[key] = value
+                else:
+                    bnf_dict[key] = strip_spaces(key, values)
+                logging.debug(bnf_dict)
             elif item:
                 values = bnf_dict[key]
                 values.extend(strip_spaces(key, item))

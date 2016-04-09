@@ -11,6 +11,44 @@ import Queue
 import math
 
 bnf =   """
+<code>                        ::= <stmt_list>
+<newline>                     ::= NEWLINE
+<indent>                      ::= INDENT
+<DEDENT>                      ::= \b
+<stmt_list>                   ::= <stmt> | <stmt> <stmt_list>
+<stmt>                        ::= <simple_stmt> | <compound_stmt> # <newline> <indent> <indent> <indent> <indent>
+<simple_stmt>                 ::= <small_stmt> # <newline> <indent> <indent> <indent> <indent>
+<small_stmt>                  ::= <expr_stmt> | <fix_assign>
+<expr_stmt>                   ::= <NAME_L> <augassign_stmt>
+<augassign_stmt>              ::= = <arith_expr>
+<fix_assign>                  ::= move_dir = <move_dir> | shoot = <shoot>
+<move_dir>                    ::= 0 | 1 | 2 | 3
+<shoot>                       ::= 0 | 1
+
+<compound_stmt>               ::= <if_stmt> | <while_stmt> | <if_else_stmt>
+<if_stmt>                     ::= if <test> : <newline> <indent> <indent> <indent> <indent> <indent> <expr_stmt>
+<if_else_stmt>                ::= if <test> :<newline> <indent> <indent> <indent> <indent> <indent> <expr_stmt> <newline> <indent> <indent> <indent> <indent>else : <newline> <indent> <indent> <indent> <indent> <indent> <expr_stmt>
+<while_stmt>                  ::= while <test> :<newline> <indent> <indent> <indent> <indent> <indent> <expr_stmt>
+<suite>                       ::= <simple_stmt> | <newline> <indent> <stmt_list> <DEDENT>
+
+<test>                        ::= <arith_expr> <comp_op> <arith_expr>
+<comp_op>                     ::= ==|!=
+<arith_expr>                  ::= <term> <add_sub> <term>
+<add_sub>                     ::= + | -
+<term>                        ::= <factor> <mul_div> <factor>
+<mul_div>                     ::= * | /
+<factor>                      ::= <add_sub> <factor> | <atom>
+<atom>                        ::= <NAME_R> | <real> | <DIGIT>
+<real>                        ::= <int-const>.<int-const>
+<int-const>                   ::= <int-const><int-const> | <DIGIT>
+<DIGIT>                       ::= 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 0
+<NAME_L>                      ::= <vars>
+<NAME_R>                      ::= enemies[<enemy_type>][0][<cor>] | players[0][0][<cor>] | <vars>
+<enemy_type>                  ::= nearest_me | nearest_base | 0 
+<cor>                         ::= 0|1
+<vars>                        ::= vars[<var_size>]
+<var_size>                    ::= <DIGIT>
+
 <S>                 ::=
 
 import os
@@ -65,44 +103,57 @@ class ai_agent():
 			#q=0
 			#for i in range(5000000):
 			#	q+=1
-
+			vars=[0.0 for i in range(10)]
+			shoot=0
 			if len(enemies)>0:
-				nearest=0
-				minDist=99999
+				nearest_me=0
+				minDist_me=99999
+				for i in range(len(enemies)):
+					dist=math.sqrt((enemies[i][0][0]-players[0][0][0])*(enemies[i][0][0]-players[0][0][0])+(enemies[i][0][1]-players[0][0][1])*(enemies[i][0][1]-players[0][0][1]))
+					if dist<minDist_me:
+						nearest_me=i
+						minDist_me=dist
+				nearest_base=0
+				minDist_base=99999
 				for i in range(len(enemies)):
 					dist=math.sqrt((enemies[i][0][0]-208)*(enemies[i][0][0]-208)+(enemies[i][0][1]-400)*(enemies[i][0][1]-400))
-					if dist<minDist:
-						nearest=i
-						minDist=dist
+					if dist<minDist_base:
+						nearest_base=i
+						minDist_base=dist
 				#print "Nearest enemy:",enemies[nearest]
-				if self.dirCount==0:
-					if enemies[nearest][0][0]>players[0][0][0]:
-						move_dir=1
-					elif abs(enemies[nearest][0][0]-players[0][0][0])<13:
-						move_dir=move_dir
-					else:
-						move_dir=3
-					if enemies[nearest][0][1]>players[0][0][1]:
-						move_dir=2
-					elif abs(enemies[nearest][0][1]-players[0][0][1])<13:
-						move_dir=move_dir
-					else:
-						move_dir=0
-					self.dirCount=1
-				else:
-					if enemies[nearest][0][1]>players[0][0][1]:
-						move_dir=2
-					elif abs(enemies[nearest][0][1]-players[0][0][1])<13:
-						move_dir=move_dir
-					else:
-						move_dir=0
-					if enemies[nearest][0][0]>players[0][0][0]:
-						move_dir=1
-					elif abs(enemies[nearest][0][0]-players[0][0][0])<13:
-						move_dir=move_dir
-					else:
-						move_dir=3
-					self.dirCount=0
+				
+				<stmt_list>
+				#sep
+				<stmt_list>
+				
+				# if self.dirCount==0:
+					# if enemies[nearest][0][0]>players[0][0][0]:
+						# move_dir=1
+					# elif abs(enemies[nearest][0][0]-players[0][0][0])<13:
+						# move_dir=move_dir
+					# else:
+						# move_dir=3
+					# if enemies[nearest][0][1]>players[0][0][1]:
+						# move_dir=2
+					# elif abs(enemies[nearest][0][1]-players[0][0][1])<13:
+						# move_dir=move_dir
+					# else:
+						# move_dir=0
+					# self.dirCount=1
+				# else:
+					# if enemies[nearest][0][1]>players[0][0][1]:
+						# move_dir=2
+					# elif abs(enemies[nearest][0][1]-players[0][0][1])<13:
+						# move_dir=move_dir
+					# else:
+						# move_dir=0
+					# if enemies[nearest][0][0]>players[0][0][0]:
+						# move_dir=1
+					# elif abs(enemies[nearest][0][0]-players[0][0][0])<13:
+						# move_dir=move_dir
+					# else:
+						# move_dir=3
+					# self.dirCount=0
 			else:
 				move_dir=4
 
@@ -1456,6 +1507,8 @@ class Game():
 		print "Game Over"
 		print "Score:",players[0].score
 		gen.set_bnf_variable('<fitness>', players[0].score/1.0)
+		quit()
+		sys.exit()
 		if play_sounds:
 			for sound in sounds:
 				sounds[sound].stop()
@@ -1464,7 +1517,7 @@ class Game():
 		self.game_over_y = 416+40
 
 		self.game_over = True
-		gtimer.add(3000, lambda :self.showScores(), 1)
+		#gtimer.add(3000, lambda :self.showScores(), 1)
 		sys.exit()
 
 	def gameOverScreen(self):
@@ -1479,16 +1532,7 @@ class Game():
 		self.writeInBricks("game", [125, 140])
 		self.writeInBricks("over", [125, 220])
 		pygame.display.flip()
-
-		while 1:
-			time_passed = self.clock.tick(50)
-			for event in pygame.event.get():
-				if event.type == pygame.QUIT:
-					quit()
-				elif event.type == pygame.KEYDOWN:
-					if event.key == pygame.K_RETURN:
-						self.showMenu()
-						return
+		sys.exit()
 
 	def showMenu(self):
 
@@ -1689,7 +1733,7 @@ class Game():
 		self.clock.tick(1)
 
 		if self.game_over:
-			self.gameOverScreen()
+			self.gameOver()
 		else:
 			self.nextLevel()
 
@@ -1983,7 +2027,7 @@ class Game():
 
 		while self.running:
 
-			time_passed = self.clock.tick(50)
+			time_passed = self.clock.tick(100) #speedup
 
 			#---------------------------------------------
 			mapinfo=self.get_mapinfo()
@@ -2168,7 +2212,7 @@ class Game():
 #if __name__ == 'pyneurgen.genotypes':
 
 print self
-self.set_bnf_variable('<fitness>', 123.0)
+#self.set_bnf_variable('<fitness>', 123.0)
 gtimer = Timer()
 
 sprites = None
@@ -2192,10 +2236,10 @@ game.showMenu()
 ges = GrammaticalEvolution()
 
 ges.set_bnf(bnf)
-ges.set_genotype_length(start_gene_length=100, max_gene_length=200)
+ges.set_genotype_length(start_gene_length=200000, max_gene_length=400000)
 
 ges.set_population_size(5)
-ges.set_max_generations(1)
+ges.set_max_generations(10)
 ges.set_fitness_type(MAX, 200000.0)
 
 ges.set_max_program_length(400000000)
