@@ -25,19 +25,20 @@ bnf =   """
 <move_dir>                    ::= 0 | 1 | 2 | 3
 <shoot>                       ::= 0 | 1
 
-<compound_stmt>               ::= <if_stmt> | <while_stmt> | <if_else_stmt>
+<compound_stmt>               ::= <if_stmt> | <if_else_stmt>
 <if_stmt>                     ::= if <test> : <newline> <indent> <indent> <indent> <indent> <indent> <expr_stmt>
 <if_else_stmt>                ::= if <test> :<newline> <indent> <indent> <indent> <indent> <indent> <expr_stmt> <newline> <indent> <indent> <indent> <indent>else : <newline> <indent> <indent> <indent> <indent> <indent> <expr_stmt>
 <while_stmt>                  ::= while <test> :<newline> <indent> <indent> <indent> <indent> <indent> <expr_stmt>
 <suite>                       ::= <simple_stmt> | <newline> <indent> <stmt_list> <DEDENT>
 
-<test>                        ::= <arith_expr> <comp_op> <arith_expr>
-<comp_op>                     ::= ==|!=
-<arith_expr>                  ::= <term> <add_sub> <term>
+<test>                        ::= self.<comp_func>(<test_var>, <test_var>)
+<test_var>                    ::= <arith_expr> | <NAME_L>
+<comp_func>                   ::= lt | gt | lteq | gteq | eq | neq
+<arith_expr>                  ::= <term> | <term> <add_sub> <term>
 <add_sub>                     ::= + | -
-<term>                        ::= <factor> <mul_div> <factor>
+<term>                        ::= <factor> | <factor> <mul_div> <factor>
 <mul_div>                     ::= * | /
-<factor>                      ::= <add_sub> <factor> | <atom>
+<factor>                      ::= <atom> | -<atom>
 <atom>                        ::= <NAME_R> | <real> | <DIGIT>
 <real>                        ::= <int-const>.<int-const>
 <int-const>                   ::= <int-const><int-const> | <DIGIT>
@@ -80,6 +81,19 @@ class ai_agent():
 
 	sameDir=0
 	dirCount=0
+	
+	def gt(self,a,b):
+		return (a>b)
+	def lt(self,a,b):
+		return (a<b)
+	def gteq(self,a,b):
+		return (a>=b)
+	def lteq(self,a,b):
+		return (a<=b)
+	def eq(self,a,b):
+		return (a==b)
+	def neq(self,a,b):
+		return (a!=b)
 
 	def operations (self,p_mapinfo,c_control):
 
@@ -125,6 +139,16 @@ class ai_agent():
 				<stmt_list>
 				#sep
 				<stmt_list>
+				#sep
+				<stmt_list>
+				#sep
+				<stmt_list>
+				#sep
+				<stmt_list>
+				#sep
+				<stmt_list>
+				#sep
+				<stmt_list>
 				
 				# if self.dirCount==0:
 					# if enemies[nearest][0][0]>players[0][0][0]:
@@ -156,16 +180,17 @@ class ai_agent():
 					# self.dirCount=0
 			else:
 				move_dir=4
+				shoot=0
 
 			#move_dir = 3 #random.randint(0,4)
 			#-----------
-			shoot = 1 #random.randint(0,1)
-			#print "Player: ",player_mid,play_dir
-			if player_mid[0]<12*16+42 and player_mid[0]>12*16-10 and move_dir==2:
-				shoot=0
-			if player_mid[1]>24*16-20 and ((player_mid[0]<12*16 and move_dir==1) or (player_mid[0]>12*16+32 and move_dir==3)):
-				shoot=0
-			#print "Update: ",shoot,move_dir
+			# shoot = 1 #random.randint(0,1)
+			# #print "Player: ",player_mid,play_dir
+			# if player_mid[0]<12*16+42 and player_mid[0]>12*16-10 and move_dir==2:
+				# shoot=0
+			# if player_mid[1]>24*16-20 and ((player_mid[0]<12*16 and move_dir==1) or (player_mid[0]>12*16+32 and move_dir==3)):
+				# shoot=0
+			# #print "Update: ",shoot,move_dir
 			self.Update_Strategy(c_control,shoot,move_dir)
 		#------------------------------------------------------------------------------------------------------
 
@@ -1507,7 +1532,6 @@ class Game():
 		print "Game Over"
 		print "Score:",players[0].score
 		gen.set_bnf_variable('<fitness>', players[0].score/1.0)
-		quit()
 		sys.exit()
 		if play_sounds:
 			for sound in sounds:
@@ -2238,7 +2262,7 @@ ges = GrammaticalEvolution()
 ges.set_bnf(bnf)
 ges.set_genotype_length(start_gene_length=200000, max_gene_length=400000)
 
-ges.set_population_size(5)
+ges.set_population_size(20)
 ges.set_max_generations(10)
 ges.set_fitness_type(MAX, 200000.0)
 
@@ -2261,3 +2285,8 @@ ges.set_timeouts(100, 300)
 
 ges.create_genotypes()
 print ges.run()
+print ges.fitness_list.sorted()
+print
+print
+gene = ges.population[ges.fitness_list.best_member()]
+print gene.get_program()
