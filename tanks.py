@@ -1,11 +1,16 @@
+#!/usr/bin/python
 # coding=utf-8
 
 import os, pygame, time, random, uuid, sys
-import ai
+import ai2 as ai
 import copy, random
 import threading
 import multiprocessing
 import Queue
+
+#default 4
+MAX_ENEMY = 4
+ENEMY_NOTSHOT = True
 
 class myRect(pygame.Rect):
 	""" Add type property """
@@ -375,7 +380,7 @@ class Level():
 		global sprites
 
 		# max number of enemies simultaneously  being on map
-		self.max_active_enemies = 4
+		self.max_active_enemies = MAX_ENEMY
 
 		tile_images = [
 			pygame.Surface((8*2, 8*2)),
@@ -716,6 +721,10 @@ class Tank():
 			self.bullet_queued = False
 
 		bullet.owner_class = self
+		
+		if ENEMY_NOTSHOT and bullet.owner_class.side == self.SIDE_ENEMY:
+			return True
+			
 		bullets.append(bullet)
 		return True
 
@@ -1035,14 +1044,15 @@ class Enemy(Tank):
 		all_directions = [self.DIR_UP, self.DIR_RIGHT, self.DIR_DOWN, self.DIR_LEFT]
 
 		if direction == None:
-			if self.direction in [self.DIR_UP, self.DIR_RIGHT]:
-				opposite_direction = self.direction + 2
-			else:
-				opposite_direction = self.direction - 2
-			directions = all_directions
-			random.shuffle(directions)
+			if self.direction in [self.DIR_UP, self.DIR_RIGHT]: #[0, 1]
+				opposite_direction = self.direction + 2 #[2,3]
+			else: #[2,3]
+				opposite_direction = self.direction - 2 #[0,1]
+			directions = all_directions # [0,1,2,3]
+			random.shuffle(directions) #suff[0,1,2,3]
 			directions.remove(opposite_direction)
-			directions.append(opposite_direction)
+			directions.append(opposite_direction) 
+			# direction suff[1,2,3,4] -> pick self.directionOpposite put to back
 		else:
 			if direction in [self.DIR_UP, self.DIR_RIGHT]:
 				opposite_direction = direction + 2
@@ -1054,11 +1064,13 @@ class Enemy(Tank):
 			else:
 				opposite_direction = direction - 2
 			directions = all_directions
-			random.shuffle(directions)
+			random.shuffle(directions) #suff[0,1,2,3]
 			directions.remove(opposite_direction)
 			directions.remove(direction)
+			# suff[1,2,3,4] will remove self.direction on both [0,2],[1,3]
 			directions.insert(0, direction)
 			directions.append(opposite_direction)
+			# direction--> list <-- directionOpposite
 
 		# at first, work with general units (steps) not px
 		x = int(round(self.rect.left / 16))
@@ -1380,7 +1392,6 @@ class Game():
 			- map capacity hasn't exceeded its quota
 			- now isn't timefreeze
 		"""
-
 		global enemies
 
 		if len(enemies) >= self.level.max_active_enemies:
@@ -1458,7 +1469,7 @@ class Game():
 		del gtimer.timers[:]
 
 		# set current stage to 0
-		self.stage = 1
+		self.stage = 0
 
 		self.animateIntroScreen()
 
@@ -1937,8 +1948,6 @@ class Game():
 		self.stage += 1
 		self.level = Level(self.stage)
 		self.timefreeze = False
-		for player in players:
-			player.lives =3
 
 		# set number of enemies by types (basic, fast, power, armor) according to level
 		levels_enemies = (
@@ -1989,7 +1998,7 @@ class Game():
 		if p_mapinfo.empty() ==True:
 			p_mapinfo.put(mapinfo)	
 
-		operations = [0,4]
+		operations = [0,4,1]
 
 		p = multiprocessing.Process(target = self.agent.operations,args = (p_mapinfo,c_control,))
 		p.start()
@@ -1998,18 +2007,6 @@ class Game():
 		while self.running:
 
 			time_passed = self.clock.tick(50)
-
-			#---------------------------------------------
-			mapinfo=self.get_mapinfo()
-			if p_mapinfo.empty() ==True:
-				p_mapinfo.put(mapinfo)
-
-			if c_control.empty()!=True:
-				try:
-					operations = c_control.get(False)
-				except Queue.Empty:
-					skip_this=True
-			#---------------------------------------------
 
 			for event in pygame.event.get():
 				if event.type == pygame.MOUSEBUTTONDOWN:
@@ -2139,7 +2136,25 @@ class Game():
 					self.gameOver()
 
 			gtimer.update(time_passed)
+			#---------------------------------------------
+			mapinfo=self.get_mapinfo()
+			
+			while p_mapinfo.empty() == False:
+				p_mapinfo.get(mapinfo)
+					
+			p_mapinfo.put(mapinfo)
 
+			if operations[2]==0:
+				operations[0]=0
+				operations[1]=4			
+
+			if c_control.empty()!=True:
+				try:
+					operations = c_control.get(False)
+				except Queue.Empty:
+					skip_this=True
+						
+			#---------------------------------------------
 			self.draw()
 
 	
@@ -2151,7 +2166,7 @@ class Game():
 		mapinfo.append([])
 		mapinfo.append([])
 		for bullet in bullets:
-			if bullet.owner == bullet.OWNER_ENEMY:
+			#if bullet.owner == bullet.OWNER_ENEMY:
 				nrect=bullet.rect.copy()
 				mapinfo[0].append([nrect,bullet.direction,bullet.speed])
 		for enemy in enemies:
