@@ -9,8 +9,8 @@ import multiprocessing
 import Queue
 
 #default 4
-MAX_ENEMY = 4
-ENEMY_NOTSHOT = True
+MAX_ENEMY = 1
+ENEMY_NOTSHOT = False
 
 class myRect(pygame.Rect):
 	""" Add type property """
