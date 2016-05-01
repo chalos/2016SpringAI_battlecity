@@ -82,7 +82,7 @@ class ai_agent():
 		
 		# g,h,f,parent,rect, direction
 		(G,H,F,P,R,D)=range(6)
-		openList[sKey] = [g, h, g+h, None, rect, self.me[DIR]]
+		openList[sKey] = [g, h, g+h, None, rect, None]
 
 		while len(openList) != 0:
 			# get minimun cost OpenList object
@@ -104,8 +104,9 @@ class ai_agent():
 			closedList[currentKey] = current
 			del openList[currentKey]
 			
-			# neighbors path search
-			neighbors = map(lambda d: [self.newPosition(current[R], current[D], d, SPEED), d], range(4))
+			# neighbors path search 
+			# newPosition(originRect, old_direction, new_direction, speed)
+			neighbors = map(lambda new_d: [self.newPosition(current[R], current[D], new_d, SPEED), new_d], range(4))
 			neighbors = filter(lambda x: self.passThroughCheck(x[0]) == 0, neighbors)
 
 			# assemble to put to openList
@@ -120,6 +121,7 @@ class ai_agent():
 				if sKey in openList:
 					h = openList[sKey][H]
 					if g <= openList[sKey][G]:
+						# g,h,f,parent,rect, direction
 						openList[sKey] = [g, h, g+h, parent, nextRect, nextDir]
 
 				elif sKey in closedList:
@@ -146,7 +148,8 @@ class ai_agent():
 		while True:
 			if current[P] is None:
 				break
-			pathToGo += [current[D]] * max(1,int(SPEED/self.me[SPD]))
+			# append (direction, parentRect)
+			pathToGo += [(current[D],None)]*(max(1,int(SPEED/self.me[SPD]))-1) + [(current[D],current[R])]
 			debug_pathToGo += debugPath[current[D]] + "<-"
 			current = current[P]
 
@@ -254,7 +257,7 @@ class ai_agent():
 		elif new_direction == LEFT:
 			copyOrigin.move_ip(-speed, 0)
 
-		copyOrigin.w = copyOrigin.h = 26
+		copyOrigin.w = copyOrigin.h = 32
 
 		return copyOrigin
 
@@ -359,6 +362,7 @@ class ai_agent():
 				return [[0,bulletDir],[1, NON]]
 			# not able to collide with bullet, dodge it
 			if self.bullets[bi][DIR] in (UP, DOWN):
+				
 				pass # TO-DO
 			else:
 				pass # TO-DO
@@ -368,8 +372,9 @@ class ai_agent():
 		mayHitBulletsIndex = self.me[REC].collidelistall(bulletViews)
 		if len(mayHitBulletsIndex) is 0:
 			return []
-
 		killerBulletsIndex = filter(lambda bi: _isKillerBullet(bi), mayHitBulletsIndex)
+		if len(killerBulletsIndex) is 0:
+			return []
 		actions = map(lambda kbi: _performActions(kbi), killerBulletsIndex)
 		actions = reduce(lambda i,j: i+j,actions)
 
@@ -423,20 +428,28 @@ class ai_agent():
 		prioPathToGo = []
 		usePrioPathToGo = False
 
+		time_p = time.clock()
+		time_c = time.clock()
+		
 		while True:
 		#-----your ai operation,This code is a random strategy,please design your ai !!-----------------------
 
-			time.sleep(TIME)
+			#time.sleep(TIME)
+			if  abs(time_c - time_p) < TIME:
+				time_c = time.clock()
+				continue
 			self.Get_mapInfo(p_mapinfo)
 			self.updateInfo()
 		
 		#-------------------------------
 			nextDirection = NON
 			nextShoot = 0
+			checkPoint = None
 
 			# nextMove
 			if skip_this:
 				logging.info("Blocking")
+				time_c = time.clock()
 				continue 
 
 			# find an enemy
@@ -451,7 +464,8 @@ class ai_agent():
 			if pathToGo is None or len(pathToGo) is 0:
 				usePathToGo = False
 			else:
-				nextDirection = pathToGo[len(pathToGo)-1]
+				nextDirection = pathToGo[len(pathToGo)-1][0]
+				checkPoint = pathToGo[len(pathToGo)-1][1]
 				usePathToGo = True
 				usePrioPathToGo = False
 
@@ -486,13 +500,36 @@ class ai_agent():
 			# DIE CHECK
 			killerBulletActions = self.bulletCheck()
 			if len(killerBulletActions) != 0:
+				logging.info("killer bullet found!")
 				prioPathToGo = killerBulletActions + prioPathToGo
 
+			# Piority First
 			if len(prioPathToGo) is not 0:
 				usePathToGo = False
 				usePrioPathToGo = True
 				nextShoot = prioPathToGo[0][0]
 				nextDirection = prioPathToGo[0][1]
+
+			# A-Star path used, check if any bias
+			if usePathToGo and checkPoint is not None:
+				new_x = self.nearest(self.me[REC].x, self.me[SPD])
+				new_y = self.nearest(self.me[REC].y, self.me[SPD])
+				diff_x = new_x - self.me[REC].x
+				diff_y = new_y - self.me[REC].y
+				while abs(diff_x) > 1:
+					if diff_x > 0:
+						c_control.put([0,LEFT,0])
+						diff_x -= self.me[SPD]
+					else:
+						c_control.put([0,RIGHT,0])
+						diff_x += self.me[SPD]
+				while abs(diff_x) > 1:
+					if diff_y > 0:
+						c_control.put([0,UP,0])
+						diff_y -= self.me[SPD]
+					else:
+						c_control.put([0,DOWN,0])
+						diff_y += self.me[SPD]
 
 			#log.info("(shoot=%d, nextmove=%d)" % (nextShoot,nextDirection))
 			if self.Update_Strategy(c_control, nextShoot, nextDirection, 0):
@@ -500,6 +537,10 @@ class ai_agent():
 					del pathToGo[len(pathToGo)-1]
 				if usePrioPathToGo and len(prioPathToGo) > 0:
 					del prioPathToGo[0]
+
+			time_p = time_c
+			time_c = time.clock()
+
 
 
 	def Get_mapInfo(self,p_mapinfo):
