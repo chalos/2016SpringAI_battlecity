@@ -9,8 +9,9 @@ import multiprocessing
 import Queue
 
 #default 4
-MAX_ENEMY = 1
+MAX_ENEMY = 4
 ENEMY_NOTSHOT = False
+START_STAGE = 1
 
 class myRect(pygame.Rect):
 	""" Add type property """
@@ -1469,7 +1470,7 @@ class Game():
 		del gtimer.timers[:]
 
 		# set current stage to 0
-		self.stage = 0
+		self.stage = START_STAGE
 
 		self.animateIntroScreen()
 

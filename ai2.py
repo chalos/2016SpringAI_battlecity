@@ -13,6 +13,8 @@ WH = 1
 SPEED = 8
 TIME = 0.01
 
+max_g = 600
+
 # constants
 (BUL,ENE,TIL,ME) = range(4)
 (UP, RIGHT, DOWN, LEFT, NON) = range(5)
@@ -20,6 +22,7 @@ TIME = 0.01
 (BASIC, FAST, POWER, ARMOR) = range(4)
 (REC,DIR,SPD,ETY) = range(4)
 CASTLE = pygame.Rect(12*16 - 16, 24*16 - 16, 32 + 16, 32 + 16)
+TOP_GEN = pygame.Rect(416/2, 0, 8, 8)
 SHL=3
 TTY=1
 UNMOVABLE = Set([TILE_BRICK, TILE_STEEL, TILE_WATER, TILE_FROZE])
@@ -36,6 +39,7 @@ class ai_agent():
 	enemiesRect = []
 	bullets = []
 	bulletsRect = []
+	bulletsView = []
 	me = None
 
 	def __init__(self):
@@ -69,7 +73,7 @@ class ai_agent():
 	"""
 	def aStar(self, target):
 		log = logging.getLogger()
-		# rect.move(offsetx, offsety), player w,h = [26, 26]
+		target = pygame.Rect(target.x, target.y, target.w/2, target.h/2)
 		closedList = {}
 		openList = {} 
 		end = None
@@ -91,12 +95,11 @@ class ai_agent():
 
 			# GOAL TEST current
 			if current[R].colliderect(target):
-				log.info("g = %d" %current[G])
 				end = current
 				break
 
-			if current[G] > 100:
-				log.debug("Over limit")
+			if current[G] > max_g:
+				log.info("Over limit")
 				end = current
 				break
 
@@ -148,12 +151,12 @@ class ai_agent():
 		while True:
 			if current[P] is None:
 				break
-			# append (direction, parentRect)
-			pathToGo += [(current[D],None)]*(max(1,int(SPEED/self.me[SPD]))-1) + [(current[D],current[R])]
+			# append (direction, checkPoint?)
+			pathToGo += [(current[D],None)]*(max(1,int(SPEED/self.me[SPD]))-1) + [(current[D],current[P][R])]
 			debug_pathToGo += debugPath[current[D]] + "<-"
 			current = current[P]
 
-		logging.info(debug_pathToGo)
+		#logging.info(debug_pathToGo)
 		return pathToGo
 
 	"""
@@ -194,6 +197,7 @@ class ai_agent():
 		
 		self.bullets = self.mapinfo[BUL]
 		self.bulletsRect = map(lambda x: x[REC], self.bullets)
+		self.bulletsView = map(lambda x: self.getBulletView(x), self.bullets)
 		self.enemies = self.mapinfo[ENE]
 		self.enemiesRect = map(lambda x: x[REC], self.enemies)
 		self.walls = filter(lambda x: x[TTY] in UNMOVABLE, self.mapinfo[TIL])
@@ -242,11 +246,6 @@ class ai_agent():
 	"""
 	def newPosition(self, origin, old_direction, new_direction, speed):
 		copyOrigin = pygame.Rect(origin.x, origin.y, origin.w, origin.h)
-		#if old_direction != new_direction:
-		new_x = self.nearest(copyOrigin.left, speed)
-		new_y = self.nearest(copyOrigin.top, speed)
-		copyOrigin.left = new_x
-		copyOrigin.top = new_y
 
 		if new_direction == UP:
 			copyOrigin.move_ip(0, -speed)
@@ -257,7 +256,7 @@ class ai_agent():
 		elif new_direction == LEFT:
 			copyOrigin.move_ip(-speed, 0)
 
-		copyOrigin.w = copyOrigin.h = 32
+		copyOrigin.w = copyOrigin.h = 26
 
 		return copyOrigin
 
@@ -285,7 +284,7 @@ class ai_agent():
 		[pygame.Rect]
 	"""
 	def getEnemiesNearCastle(self):
-		threshold = 416/2
+		threshold = 416/3
 		enemies = filter(lambda enemy: enemy.top>threshold, self.enemiesRect)
 		return enemies
 
@@ -303,12 +302,12 @@ class ai_agent():
 
 		# check with walls
 		colli_walls_index = gunPoint.collidelistall(self.wallsRect) # list of colli_walls index
-		
+		colli_walls_index = filter(lambda wi: self.walls[wi][TTY] in (TILE_STEEL, TILE_FROZE), colli_walls_index)
 		if len(colli_walls_index) == 0:	
 			return ei
 
 		# nearest walls
-		diff_colli_walls = map(lambda wi: abs(self.wallsRect[wi].x - self.me[REC].x)+abs(self.wallsRect[wi].y - self.me[REC].y), colli_walls_index)	
+		diff_colli_walls = map(lambda wi: self.diff(self.wallsRect[wi], self.me[REC]), colli_walls_index)	
 		wi = 0
 		diff_wall = sys.maxint
 		for i in range(len(diff_colli_walls)):
@@ -317,26 +316,58 @@ class ai_agent():
 				diff_wall = diff_colli_walls[i]
 
 		enemy = self.enemiesRect[ei]
-		diff_enemy = abs(enemy.x - self.me[REC].x)+abs(enemy.y - self.me[REC].y)
+		diff_enemy = self.diff(enemy, self.me[REC])
 
 		if diff_wall < diff_enemy:
-			return -1 
+			return -1
+		if diff_enemy > 100:
+			return -1
 		else:
-			ei
-		
+			return ei
+	
+	def getBulletView(self, bullet):
+		if bullet[DIR] in (UP,DOWN):
+			w = bullet[REC].w 
+		else:
+			w = bullet[REC].h 
+		return self.getViewRect(bullet[REC], bullet[DIR], w)
+
+	def performActions(self, bi):
+		bulletDir = (self.bullets[bi][DIR]+2)%4
+		gunView = self.getViewRect(self.me[REC], bulletDir, 3)
+		bulletView = self.getBulletView(self.bullets[bi])
+		if gunView.colliderect(bulletView):
+			# collide the killer bullet with bullet
+			return [[0,bulletDir],[1, NON]]
+		# not able to collide with bullet, dodge it
+		diff_bullet = self.diff(self.me[REC], self.bulletsRect[bi])
+		if diff_bullet > 100:
+			return []
+		if self.bullets[bi][DIR] in (UP, DOWN):
+			center_diff = self.me[REC].centerx - self.bulletsRect[bi].centerx
+			if center_diff < 0:
+				# player at left, dodge left
+				return [[0,LEFT]] * int(abs(center_diff/2))
+			else:
+				# player at right, dodge right
+				return [[0,RIGHT]] * int(abs(center_diff/2))
+		else: #(LEFT,RIGHT)
+			center_diff = self.me[REC].centery - self.bulletsRect[bi].centery
+			if center_diff < 0:
+				# player at top, dodge up
+				return [[0,UP]] * int(abs(center_diff/2))
+			else:
+				# player at bot, dodge down
+				return [[0,DOWN]] * int(abs(center_diff/2))
+		return []
+
 	"""
-	@ ret: Bullets will hit player
+	Bullet check on direction
+	@ ret: Bullets will hit rect
 		[bullet_index @type:int]
 	"""
-	def bulletCheck(self):
+	def bulletCheck(self, target_rect):
 		# generate bullet views
-		def _getBulletView(bullet):
-			if bullet[DIR] in (UP,DOWN):
-				w = bullet[REC].w
-			else:
-				w = bullet[REC].h
-			return self.getViewRect(bullet[REC], bullet[DIR], w)
-
 		def _isKillerBullet(bi):
 			colli_walls_index = self.bulletsRect[bi].collidelistall(self.wallsRect)
 			if len(colli_walls_index) is 0: 
@@ -347,38 +378,20 @@ class ai_agent():
 			# choose smallest distance
 			diff_walls = reduce(lambda di,dj: di if di<dj else dj, diff_colli_walls)
 			# get distance between player and bullet
-			diff_player = abs(self.me[REC].x-self.bulletsRect[bi].x)+abs(self.me[REC].y-self.bulletsRect[bi].y)
+			diff_player = abs(target_rect.x-self.bulletsRect[bi].x)+abs(target_rect.y-self.bulletsRect[bi].y)
 			if diff_player < diff_walls:
 				return True
 			else:
 				return False
 
-		def _performActions(bi):
-			bulletDir = (self.bullets[bi][DIR]+2)%4
-			gunView = self.getViewRect(self.me[REC], bulletDir, 3)
-			bulletView = _getBulletView(self.bullets[bi])
-			if gunView.colliderect(bulletView):
-				# collide the killer bullet with bullet
-				return [[0,bulletDir],[1, NON]]
-			# not able to collide with bullet, dodge it
-			if self.bullets[bi][DIR] in (UP, DOWN):
-				
-				pass # TO-DO
-			else:
-				pass # TO-DO
-			return []
-
-		bulletViews = map(lambda b: _getBulletView(b), self.bullets)
-		mayHitBulletsIndex = self.me[REC].collidelistall(bulletViews)
+		mayHitBulletsIndex = target_rect.collidelistall(self.bulletsView)
 		if len(mayHitBulletsIndex) is 0:
 			return []
 		killerBulletsIndex = filter(lambda bi: _isKillerBullet(bi), mayHitBulletsIndex)
 		if len(killerBulletsIndex) is 0:
 			return []
-		actions = map(lambda kbi: _performActions(kbi), killerBulletsIndex)
-		actions = reduce(lambda i,j: i+j,actions)
-
-		return actions
+		
+		return killerBulletsIndex
 
 	"""
 	Tank will perform shoot first then move if actions given at same phare
@@ -421,12 +434,11 @@ class ai_agent():
 			
 	def operations(self,p_mapinfo,c_control):
 		log = logging.getLogger()
+		debugPath = ["FRONT","RIGHT","BACK","LEFT"]
 
 		pathToGo = []
-		usePathToGo = False
 
 		prioPathToGo = []
-		usePrioPathToGo = False
 
 		time_p = time.clock()
 		time_c = time.clock()
@@ -448,35 +460,41 @@ class ai_agent():
 
 			# nextMove
 			if skip_this:
-				logging.info("Blocking")
+				#logging.info("Blocking")
 				time_c = time.clock()
 				continue 
 
-			# find an enemy
-			target = self.getNextEnemy()
+			# Do Priority Actions
+			if len(prioPathToGo) != 0:
+				nextShoot = prioPathToGo[0][0]
+				nextDirection = prioPathToGo[0][1]
+				if self.Update_Strategy(c_control, nextShoot, nextDirection, 0):
+					if nextDirection is not NON:
+						# Dodge make A-Star* walk path dirty
+						pathToGo = []
+					del prioPathToGo[0]
+				continue
 
-			# direction decision
-			if not usePathToGo:
-				if target is not None:
-					log.info("next target: (%d,%d)"%(target.x/16, target.y/16))
-					pathToGo = self.aStar(target)
-		
-			if pathToGo is None or len(pathToGo) is 0:
-				usePathToGo = False
-			else:
-				nextDirection = pathToGo[len(pathToGo)-1][0]
-				checkPoint = pathToGo[len(pathToGo)-1][1]
-				usePathToGo = True
-				usePrioPathToGo = False
+			assert len(prioPathToGo) is 0
+
+			# DIE CHECK
+			killerBulletsIndex = self.bulletCheck(self.me[REC])
+			if len(killerBulletsIndex) != 0:
+				logging.info("killer bullet found")
+				actions = map(lambda kbi: self.performActions(kbi), killerBulletsIndex)
+				prioPathToGo += reduce(lambda i,j: i+j,actions)
+
+			if len(prioPathToGo) > 0:
+				continue
 
 			# check directions, shoot if enemy in shoot range
-			# shoot + direction decision (range(1): target lock; range(4): greedy)
-			for i in range(1):
+			# shoot + direction decision (range(1): target lock; range(4): greedy)			
+			for i in range(4):
 				pointEnemyIndex = self.gunPointingEnemy(i)
-				if pointEnemyIndex != -1: 
-					logging.info("Enemy %d Me"%i)
+				if pointEnemyIndex != -1 and pointEnemyIndex is not None: 
+					#logging.info("Enemy %s Me"%debugPath[i])
 					if not self.willShootKing(1):
-						logging.info("No King %d Me"%i)
+						#logging.info("No King %s Me"%debugPath[i])
 						if i == 0:
 							nextShoot = 1
 						else:
@@ -484,12 +502,12 @@ class ai_agent():
 							prioPathToGo.append([0, _dir])
 							prioPathToGo.append([1, NON])
 					else:
-						logging.info("King maybe %d Me"%i)
+						#logging.info("King maybe %s Me"%debugPath[i])
 						pointEnemy = self.enemiesRect[pointEnemyIndex]
 						enemyDiff  = abs(self.me[REC].x - pointEnemy.x) + abs(self.me[REC].y - pointEnemy.y)
 						kingDiff = abs(self.me[REC].x - CASTLE.x) + abs(self.me[REC].y - CASTLE.y)
 						if enemyDiff < kingDiff:
-							logging.info("No King %d Me"%i)
+							#logging.info("No King %s Me"%debugPath[i])
 							if i == 0:
 								nextShoot = 1
 							else:
@@ -497,51 +515,47 @@ class ai_agent():
 								prioPathToGo.append([0, _dir])
 								prioPathToGo.append([1, NON])
 
-			# DIE CHECK
-			killerBulletActions = self.bulletCheck()
-			if len(killerBulletActions) != 0:
-				logging.info("killer bullet found!")
-				prioPathToGo = killerBulletActions + prioPathToGo
+			if len(prioPathToGo) > 0:
+				continue
 
-			# Piority First
-			if len(prioPathToGo) is not 0:
-				usePathToGo = False
-				usePrioPathToGo = True
-				nextShoot = prioPathToGo[0][0]
-				nextDirection = prioPathToGo[0][1]
+			# direction decision
+			if len(prioPathToGo) is 0:
+				if pathToGo is None or len(pathToGo) is 0:
+					# find an enemy
+					target = self.getNextEnemy()
+					if target is not None:
+						#log.info("next target: (%d,%d)"%(target.x/16, target.y/16))
+						pathToGo = self.aStar(target)
+					else:
+						pathToGo = self.aStar(TOP_GEN)
 
-			# A-Star path used, check if any bias
-			if usePathToGo and checkPoint is not None:
-				new_x = self.nearest(self.me[REC].x, self.me[SPD])
-				new_y = self.nearest(self.me[REC].y, self.me[SPD])
-				diff_x = new_x - self.me[REC].x
-				diff_y = new_y - self.me[REC].y
-				while abs(diff_x) > 1:
-					if diff_x > 0:
-						c_control.put([0,LEFT,0])
-						diff_x -= self.me[SPD]
-					else:
-						c_control.put([0,RIGHT,0])
-						diff_x += self.me[SPD]
-				while abs(diff_x) > 1:
-					if diff_y > 0:
-						c_control.put([0,UP,0])
-						diff_y -= self.me[SPD]
-					else:
-						c_control.put([0,DOWN,0])
-						diff_y += self.me[SPD]
+					if pathToGo is None:
+						# newly generated stucked
+						prioPathToGo.append([0, UP])
+						prioPathToGo.append([1, NON])
+						continue
+		
+			if pathToGo is not None and len(pathToGo) > 0:
+				nextDirection = pathToGo[len(pathToGo)-1][0]
+				checkPoint = pathToGo[len(pathToGo)-1][1]
+				usePathToGo = True
+
+			# move will guild to dead?
+			if usePathToGo:
+				newMeRect = self.newPosition(self.me[REC], self.me[DIR], nextDirection, self.me[SPD]*2)
+				killerBulletsIndex = self.bulletCheck(newMeRect)
+				if len(killerBulletsIndex) != 0:
+					logging.info("next move will guild to dead")
+					usePathToGo = False
+					nextDirection = NON
 
 			#log.info("(shoot=%d, nextmove=%d)" % (nextShoot,nextDirection))
 			if self.Update_Strategy(c_control, nextShoot, nextDirection, 0):
 				if usePathToGo and len(pathToGo) > 0:
 					del pathToGo[len(pathToGo)-1]
-				if usePrioPathToGo and len(prioPathToGo) > 0:
-					del prioPathToGo[0]
 
 			time_p = time_c
 			time_c = time.clock()
-
-
 
 	def Get_mapInfo(self,p_mapinfo):
 		if p_mapinfo.empty()!=True:
