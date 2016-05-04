@@ -3,22 +3,49 @@ import time
 import multiprocessing
 import math
 import pygame
+import logging 
+import sys
 import Queue
+from sets import Set
+
+# huristic weight
+WH = 1
+SPEED = 8
+TIME = 0.01
+
+max_g = 600
+
+# constants
+(BUL,ENE,TIL,ME) = range(4)
+(UP, RIGHT, DOWN, LEFT, NON) = range(5)
+(TILE_EMPTY, TILE_BRICK, TILE_STEEL, TILE_WATER, TILE_GRASS, TILE_FROZE) = range(6)
+(BASIC, FAST, POWER, ARMOR) = range(4)
+(REC,DIR,SPD,ETY) = range(4)
+CASTLE = pygame.Rect(12*16 - 16, 24*16 - 16, 32 + 16, 32 + 16)
+TOP_GEN = pygame.Rect(416/2, 0, 8, 8)
+SHL=3
+TTY=1
+UNMOVABLE = Set([TILE_BRICK, TILE_STEEL, TILE_WATER, TILE_FROZE])
+(TOPX, TOPY, BOTX, BOTY) = (0,0,416, 416)
+(SHOOT,MOVE) = range(2)
+skip_this = False
 
 class ai_agent():
 	mapinfo = []
-	path = "4";
-	enemyCount = 0;
-	speed=2
-
-	(DIR_UP, DIR_RIGHT, DIR_DOWN, DIR_LEFT) = range(4)
-	(TILE_EMPTY, TILE_BRICK, TILE_STEEL, TILE_WATER, TILE_GRASS, TILE_FROZE) = range(6)
-	(BASIC, FAST, POWER, ARMOR) = range(4)
-
-	CASTLE = pygame.Rect(12*16, 24*16, 32, 32)
+	moves = [] # [(move, shoot)]
+	walls = []
+	wallsRect = []
+	enemies = []
+	enemiesRect = []
+	bullets = []
+	bulletsRect = []
+	bulletsView = []
+	me = None
 
 	def __init__(self):
 		self.mapinfo = []
+
+		logging.basicConfig(level=logging.INFO, format="%(levelname)s(%(lineno)d): %(funcName)s: %(message)s")
 
 	# rect:					[left, top, width, height]
 	# rect_type:			0:empty 1:brick 2:steel 3:water 4:grass 5:froze
@@ -34,577 +61,513 @@ class ai_agent():
 	# def Get_mapInfo:		fetch the map infomation
 	# def Update_Strategy	Update your strategy
 
-	"""
-	@params
-		@player [pygame.Rect(), int DIR, speed, is_shielded]
-		* pygame.Rect members:
-			(x,y,w,h)
-		@titles [[pygame.Rect(), int type]]
-	"""
-	def colide(self,player,tiles):
-		for t in tiles:
-			if player[0]-t[0]<=16 or t[0]-player[0]<=26:
-				if player[1]-t[1]<=16 or t[1]-player[1]<=26:
-					return True
-		return False
+	# note: will perform shoot first then rotate
 
 	"""
-	0 <-> 2, 1 <-> 3, 4 --> 4
+	generate a k list of aStar to direction
+	@dep:
+		SPEED
+	@params 
+		k int
+		target pygame.Rect
 	"""
-	def ops_dir(self,dir):
-		return (dir+2)%4 if dir!=4 else dir
+	def aStar(self, target):
+		log = logging.getLogger()
+		target = pygame.Rect(target.x, target.y, target.w/2, target.h/2)
+		closedList = {}
+		openList = {} 
+		end = None
 
-	"""
-	@params:
-		@bullets:
-			* [rect, direction, speed]
-		@player:
-			* [rect, direction, speed, isSheild]
-		@enemies:
-			* [[rect, direction, speed, type]]
-		@speed: 
-			* self.speed=6
-		@dir_wanted: given from aStar_dir
-		@lineup:
-			* same column or row (U, R, D, L):(same col up, same row right, same col down, same row left)
-		@obstacle_rects:
-			* [[rect, type]], which type != GRASS
-	"""
-	def bulletproof(self,bullets,player,enemies,speed,dir_wanted,lineup,obstacle_rects,debug_msg):
-		directions=[]
-		nearest_bul=0
-		minDist_bul=99999.0 # sys.maxsize
+		# index-> {"xxx,yyy": value}
+		sKey = "%03d%03d" % (self.me[REC].x, self.me[REC].y)
+		rect = self.me[REC]
+		g = 0
+		h = self.huristic(rect, target, SPEED)
+		
+		# g,h,f,parent,rect, direction
+		(G,H,F,P,R,D)=range(6)
+		openList[sKey] = [g, h, g+h, None, rect, None]
 
-		# player_mid = [player.rect.centerx, player.rect.centery]
-		player_mid=[]
-		player_mid.append(player[0][0]+13)
-		player_mid.append(player[0][1]+13)
+		while len(openList) != 0:
+			# get minimun cost OpenList object
+			currentKey = reduce(lambda i,j: i if (openList[i][F]<openList[j][F]) else j, openList.keys())
+			current = openList[currentKey]
 
-		# player_left = player.rect.left
-		player_left=player[0][0]
-		# player_top = player.rect.top
-		player_top=player[0][1]
-		shoot=0
+			# GOAL TEST current
+			if current[R].colliderect(target):
+				end = current
+				break
 
-		#0 get bullet that has minimum distance with tank
-		## (choose a target bullet)
-		if len(bullets)>0:
-			#1 for bullet in bullets:
-			for i in range(len(bullets)):
-				#2 dist = sqrt( (bullet.rect.x - player.rect.centerx)^2 + (bullet.rect.y - player.rect.centery)^2 )
-				dist=math.sqrt((bullets[i][0][0]-player_mid[0])*(bullets[i][0][0]-player_mid[0])+(bullets[i][0][1]-player_mid[1])*(bullets[i][0][1]-player_mid[1]))
-				if dist<minDist_bul:
-					nearest_bul=i # nearestBul = bullet
-					minDist_bul=dist
+			if current[G] > max_g:
+				log.info("Over limit")
+				end = current
+				break
 
-		#0 if distance of min_distance(bullet) <= 100
-		## (bullet close enough)
-		if minDist_bul<=100:
-			#1 distance of nearestBul.rect.x -- player.rect.centerx <= 15
-			## (bullet will hit player)
-			if abs(bullets[nearest_bul][0][0]+1-player_mid[0])<=15:
-				#2 distance of nearestBul.rect.x -- player.rect.centerx <=2
-				## (but enough to fight back with bullet)
-				if abs(bullets[nearest_bul][0][0]+1-player_mid[0])<=2:
-					#3 nearestBul.direction == UP, nearestBul.rect.y > player.rect.top
-					## (bullet flying up and bullet at down side of player)
-					if bullets[nearest_bul][1]==0 and bullets[nearest_bul][0][1]>player_top:
-						#4 --> direction queue <-- DOWN
-						#4 --> shoot 
-						directions.append(2)
-						shoot=1
-						if debug_msg:
-							print "kill bullet from down !!!!"
-					#3 nearestBul.distance == DOWN, nearestBul.rect.y < player.rect.top
-					## (bullet flying down and bullet at up side of player)
-					if bullets[nearest_bul][1]==2 and bullets[nearest_bul][0][1]<player_top:
-						#4 --> direction queue <-- UP
-						#4 --> shoot
-						directions.append(0)
-						shoot=1
-						if debug_msg:
-							print "kill bullet from up !!!!", directions
-				#2 distance of nearestBul.rect.x -- player.rect.centerx > 2
-				## (cannot fight back with bullet)
-				else:
-					#3 nearestBul.rect.x > player.rect.centerx
-					## (bullet at right side of player)
-					if bullets[nearest_bul][0][0]>player_mid[0]:
-						#4 --> direction queue <-- LEFT <-- RIGHT
-						directions.append(3)
-						directions.append(1)
-						if debug_msg:
-							print "dodge bullet from ud, go left !!!", directions
-					#3 nearestBul.rect.x <= player.rect.centerx
-					## (bullet at left side of player)
-					else:
-						#4 --> direction queue <-- RIGHT <-- LEFT
-						directions.append(1)
-						directions.append(3)
-						if debug_msg:
-							print "dodge bullet from ud, go right !!!", directions
+			# put to closedList
+			closedList[currentKey] = current
+			del openList[currentKey]
 			
-			#1 distance of nearestBul.rect.y -- player.rect.centery <= 15
-			## (the bullet will hit player)
-			elif abs(bullets[nearest_bul][0][1]+1-player_mid[1])<=15:
-				#2 distance of nearestBul.rect.y -- player.rect.centery <= 2
-				## (but enough to fight back with bullet)
-				if abs(bullets[nearest_bul][0][1]+1-player_mid[1])<=2:
-					#3 nearestBul.direction == RIGHT, nearestBul.rect.x < player.rect.x 
-					## (bullet flying to right and player at right side of bullet)
-					if bullets[nearest_bul][1]==1 and bullets[nearest_bul][0][0]<player_left:
-						#4 --> direction queue <-- LEFT
-						#4 --> shoot
-						directions.append(3)
-						shoot=1
-						if debug_msg:
-							print "kill bullet from left !!!!", directions
-					#3 nearestBul.direction == LEFT, nearestBul.rect.x > player.rect.x
-					## (bullet flying to left and player at left side of bullet)
-					if bullets[nearest_bul][1]==3 and bullets[nearest_bul][0][0]>player_left:
-						#4 --> direction queue <-- RIGHT
-						#4 --> shoot
-						directions.append(1)
-						shoot=1
-						if debug_msg:
-							print "kill bullet from right !!!!", directions
-				#2 distance of nearest.rect.y -- player.rect.centery > 2
-				## (cannot fight back with bullet)
-				else:
-					#3 nearestBul.rect.y > player.rect.centery
-					## (bullet at down side of player)
-					if bullets[nearest_bul][0][1]>player_mid[1]:
-						#4 --> direction queue <-- UP <-- DOWN
-						directions.append(0)
-						directions.append(2)
-						if debug_msg:
-							print "dodge bullet from lr, go up !!!", directions
-					#3 nearestBul.rect.y <= player.rect.centery
-					## (bullet at up side of player)
-					else:
-						#4 --> direction queue <-- DOWN <-- UP
-						directions.append(2)
-						directions.append(0)
-						if debug_msg:
-							print "dodge bullet from lr, go down !!!", directions
-			#1 bullet distance outside of square (15,15)
-			#1 do action on enemy at same column or row
-			else:
-				#2 aStarDir same as same column/row enemy direction
-				if lineup==dir_wanted:
-					#3 shoot
-					shoot=1
-				#2 player.direction same as col/row enemy direction
-				if player[1]==lineup:
-					#3 --> direction queue <-- Do nothing
-					directions.append(4)
-				#2 player.direction not same as col/row enemy direction
-				else:
-					#3 --> direction queue <-- aStarDir
-					## should be (col/row enemy direction)?
-					directions.append(dir_wanted)
+			# neighbors path search 
+			# newPosition(originRect, old_direction, new_direction, speed)
+			neighbors = map(lambda new_d: [self.newPosition(current[R], current[D], new_d, SPEED), new_d], range(4))
+			neighbors = filter(lambda x: self.passThroughCheck(x[0]) == 0, neighbors)
 
-				#2 
-				if bullets[nearest_bul][1]==0 or bullets[nearest_bul][1]==2:
-					if bullets[nearest_bul][0][0]>player_left:
-						if 1 in directions:
-							directions.remove(1)
-						if debug_msg:
-							print "not go into bullet from ud on my right !!!", directions
-					else:
-						if 3 in directions:
-							directions.remove(3)
-						if debug_msg:
-							print "not go into bullet from ud on my left !!!", directions
-				if bullets[nearest_bul][1]==1 or bullets[nearest_bul][1]==3:
-					if bullets[nearest_bul][0][1]>player_top:
-						if 2 in directions:
-							directions.remove(2)
-						if debug_msg:
-							print "not go into bullet from lr on my down !!!", directions
-					else:
-						if 0 in directions:
-							directions.remove(0)
-						if debug_msg:
-							print "not go into bullet from lr on my up !!!", directions
+			# assemble to put to openList
+			for neighbor in neighbors:
+				nextRect = neighbor[0]
+				nextDir = neighbor[1]
+				sKey = "%03d%03d" % (nextRect.x, nextRect.y)
+				g = current[G]+SPEED
+				parent = current
 
+				# repeated checking
+				if sKey in openList:
+					h = openList[sKey][H]
+					if g <= openList[sKey][G]:
+						# g,h,f,parent,rect, direction
+						openList[sKey] = [g, h, g+h, parent, nextRect, nextDir]
+
+				elif sKey in closedList:
+					pass
+					#h = closedList[sKey][H]
+					#if g < closedList[sKey][G]:
+						#del closedList[sKey]
+						#openList[sKey] = [g, h, g+h, parent, nextRect, nextDir]
+
+				else:
+					h = self.huristic(nextRect, target, SPEED)
+					openList[sKey] = [g, h, g+h, parent, nextRect, nextDir]
+
+		# perform from end
+		if end is None:
+			logging.info("a* search no route")
+			return None
+
+		current = end
+		pathToGo = []
+
+		debug_pathToGo = ""
+		debugPath = ["U","R","D","L"]
+		while True:
+			if current[P] is None:
+				break
+			# append (direction, checkPoint?)
+			pathToGo += [(current[D],None)]*(max(1,int(SPEED/self.me[SPD]))-1) + [(current[D],current[P][R])]
+			debug_pathToGo += debugPath[current[D]] + "<-"
+			current = current[P]
+
+		#logging.info(debug_pathToGo)
+		return pathToGo
+
+	"""
+	@ret 
+		pygame.Rect
+	"""
+	def getViewRect(self, rect, direction, width):
+		global UP,DOWN,LEFT,RIGHT,TOPX,TOPY,BOTX,BOTY,REC
+
+		half_width = max(1, width/2)
+
+		if direction is UP:
+			x = rect.centerx - half_width
+			y = TOPY
+			w = width
+			h = abs(TOPY - rect.top) #+ half_width
+		elif direction is RIGHT:
+			x = rect.right #- half_width
+			y = rect.centery - half_width
+			w = abs(BOTX - rect.right)
+			h = width
+		elif direction is DOWN:
+			x = rect.centerx - half_width
+			y = rect.bottom #- half_width
+			w = width
+			h = abs(BOTY - rect.bottom)
+		elif direction is LEFT:
+			x = TOPX
+			y = rect.centery - half_width
+			w = abs(TOPX - rect.left) #+ half_width
+			h = width
+
+		return pygame.Rect(x,y,w,h)
+
+
+	def updateInfo(self):
+		# remove unmovable tile
+		
+		self.bullets = self.mapinfo[BUL]
+		self.bulletsRect = map(lambda x: x[REC], self.bullets)
+		self.bulletsView = map(lambda x: self.getBulletView(x), self.bullets)
+		self.enemies = self.mapinfo[ENE]
+		self.enemiesRect = map(lambda x: x[REC], self.enemies)
+		self.walls = filter(lambda x: x[TTY] in UNMOVABLE, self.mapinfo[TIL])
+		self.wallsRect = map(lambda x: x[REC], self.walls)
+		
+		# not consider shield as important info
+		self.me = self.mapinfo[ME][0][0:3]
+		
+	"""
+	Manhattan distance based
+	@param
+		s, t pygame.Rect, speed int
+	@ret 
+		int
+	"""
+	def huristic(self, s, t, speed):
+		global WH
+		h = self.diff(s,t) / SPEED
+		return WH * h
+
+	def diff(self, s, t):
+		return (abs(s.x - t.x) + abs(s.y - t.y))
+
+	def nearest(self, num, base):
+		""" Round number to nearest divisible """
+		return int(round(num / (base * 1.0)) * base)
+
+	def fixPosition(self, target):
+		new_x = self.nearest(target.left, 8) + 3
+		new_y = self.nearest(target.top, 8) + 3
+
+		if (abs(target.left - new_x) < 5):
+			target.left = new_x
+
+		if (abs(target.top - new_y) < 5):
+			target.top = new_y
+
+		return target
+
+	"""
+	@param
+		origin: pygame.Rect
+		direction int [0-3]
+	@ret
+		pygame.Rect
+	"""
+	def newPosition(self, origin, old_direction, new_direction, speed):
+		copyOrigin = pygame.Rect(origin.x, origin.y, origin.w, origin.h)
+
+		if new_direction == UP:
+			copyOrigin.move_ip(0, -speed)
+		elif new_direction == RIGHT:
+			copyOrigin.move_ip(speed, 0)
+		elif new_direction == DOWN:
+			copyOrigin.move_ip(0, speed)
+		elif new_direction == LEFT:
+			copyOrigin.move_ip(-speed, 0)
+
+		copyOrigin.w = copyOrigin.h = 26
+
+		return copyOrigin
+
+	"""
+	@ ret:
+		pygame.Rect
+	"""
+	def getNextEnemy(self):
+		enemiesSet = self.getEnemiesNearCastle()
+		if len(enemiesSet) == 0:
+			enemiesSet = self.enemiesRect
+
+		# nearest to player
+		nearestEnemy = None
+		nearest = sys.maxint
+		for enemy in enemiesSet:
+			l = self.diff(self.me[REC], enemy)
+			nearest = min(l, nearest)
+			nearestEnemy = enemy
+
+		return nearestEnemy
+
+	"""
+	@ ret
+		[pygame.Rect]
+	"""
+	def getEnemiesNearCastle(self):
+		threshold = 416/3
+		enemies = filter(lambda enemy: enemy.top>threshold, self.enemiesRect)
+		return enemies
+
+	"""
+	@ ret
+		index of pointed enemy
+	"""
+	def gunPointingEnemy(self, dir_offset=0):
+		gunPoint = self.getViewRect(self.me[REC], (self.me[DIR]+dir_offset)%4, 3)
+		# check with enemy
+		ei = gunPoint.collidelist(self.enemiesRect)
+		
+		if ei == -1:
+			return ei
+
+		# check with walls
+		colli_walls_index = gunPoint.collidelistall(self.wallsRect) # list of colli_walls index
+		colli_walls_index = filter(lambda wi: self.walls[wi][TTY] in (TILE_STEEL, TILE_FROZE), colli_walls_index)
+		if len(colli_walls_index) == 0:	
+			return ei
+
+		# nearest walls
+		diff_colli_walls = map(lambda wi: self.diff(self.wallsRect[wi], self.me[REC]), colli_walls_index)	
+		wi = 0
+		diff_wall = sys.maxint
+		for i in range(len(diff_colli_walls)):
+			if diff_colli_walls[i] < diff_wall:
+				wi = i
+				diff_wall = diff_colli_walls[i]
+
+		enemy = self.enemiesRect[ei]
+		diff_enemy = self.diff(enemy, self.me[REC])
+
+		if diff_wall < diff_enemy:
+			return -1
+		if diff_enemy > 100:
+			return -1
 		else:
-			if lineup==dir_wanted:
-				shoot=1
-			if player[1]==lineup:
-				directions.append(4)
-			else:
-				directions.append(dir_wanted)
-
-			nearest=0
-			minDist=99999
-			for i in range(len(enemies)):
-				enemies_mid=[enemies[i][0][0]+13,enemies[i][0][1]+13]
-				dist=math.sqrt((enemies_mid[0]-player_mid[0])*(enemies_mid[0]-player_mid[0])+(enemies_mid[1]-player_mid[1])*(enemies_mid[1]-player_mid[1]))
-				if dist<minDist:
-					nearest=i
-					minDist=dist
-			if minDist<50:
-				shoot=1
-				if enemies[nearest][1]==0 or enemies[nearest][1]==2:
-					if enemies[nearest][0][0]>player_left:
-						if 1 in directions:
-							directions.append(4)
-						if debug_msg:
-							print "not go into enemy from ud on my right !!!", directions
-					else:
-						if 3 in directions:
-							directions.append(4)
-						if debug_msg:
-							print "not go into enemy from ud on my left !!!", directions
-				if enemies[nearest][1]==1 or enemies[nearest][1]==3:
-					if enemies[nearest][0][1]>player_top:
-						if 2 in directions:
-							directions.append(4)
-						if debug_msg:
-							print "not go into enemy from lr on my down !!!", directions
-					else:
-						if 0 in directions:
-							directions.append(4)
-						if debug_msg:
-							print "not go into enemy from lr on my up !!!", directions
-
-		#print directions,
-		if len(directions)>0:
-			for direction in directions:
-				if direction == 0:
-					new_position=[player_left,player_top-speed]
-				elif direction == 1:
-					new_position=[player_left+speed,player_top]
-				elif direction == 2:
-					new_position=[player_left,player_top+speed]
-				elif direction == 3:
-					new_position=[player_left-speed,player_top]
-				else:
-					new_position=[player_left,player_top]
-				player_rect = pygame.Rect(new_position, [26, 26])
-				# collisions with tiles
-				coli = self.check_barrier(player_rect,obstacle_rects)
-				if coli > -2:
-					if debug_msg:
-						print " c",
-					if coli>-1 and self.mapinfo[2][coli][1] == 1:
-						if debug_msg:
-							print "b"
-						if lineup==dir_wanted:
-							shoot=1
-							break
-				else:
-					return shoot,direction
+			return ei
+	
+	def getBulletView(self, bullet):
+		if bullet[DIR] in (UP,DOWN):
+			w = bullet[REC].w 
 		else:
-			return shoot,4
-		return shoot,4
+			w = bullet[REC].h 
+		return self.getViewRect(bullet[REC], bullet[DIR], w)
 
-	def operations (self,p_mapinfo,c_control):
+	def performActions(self, bi):
+		bulletDir = (self.bullets[bi][DIR]+2)%4
+		gunView = self.getViewRect(self.me[REC], bulletDir, 3)
+		bulletView = self.getBulletView(self.bullets[bi])
+		if gunView.colliderect(bulletView):
+			# collide the killer bullet with bullet
+			return [[0,bulletDir],[1, NON]]
+		# not able to collide with bullet, dodge it
+		diff_bullet = self.diff(self.me[REC], self.bulletsRect[bi])
+		if diff_bullet > 100:
+			return []
+		if self.bullets[bi][DIR] in (UP, DOWN):
+			center_diff = self.me[REC].centerx - self.bulletsRect[bi].centerx
+			if center_diff < 0:
+				# player at left, dodge left
+				return [[0,LEFT]] * int(abs(center_diff/2))
+			else:
+				# player at right, dodge right
+				return [[0,RIGHT]] * int(abs(center_diff/2))
+		else: #(LEFT,RIGHT)
+			center_diff = self.me[REC].centery - self.bulletsRect[bi].centery
+			if center_diff < 0:
+				# player at top, dodge up
+				return [[0,UP]] * int(abs(center_diff/2))
+			else:
+				# player at bot, dodge down
+				return [[0,DOWN]] * int(abs(center_diff/2))
+		return []
 
+	"""
+	Bullet check on direction
+	@ ret: Bullets will hit rect
+		[bullet_index @type:int]
+	"""
+	def bulletCheck(self, target_rect):
+		# generate bullet views
+		def _isKillerBullet(bi):
+			colli_walls_index = self.bulletsRect[bi].collidelistall(self.wallsRect)
+			if len(colli_walls_index) is 0: 
+				# clear path between bullet and player
+				return True
+			# get distance between walls and bullet
+			diff_colli_walls = map(lambda wi: abs(self.wallsRect[wi].x-self.bulletsRect[bi].x)+abs(self.wallsRect[wi].y-self.bulletsRect[bi].y), colli_walls_index)
+			# choose smallest distance
+			diff_walls = reduce(lambda di,dj: di if di<dj else dj, diff_colli_walls)
+			# get distance between player and bullet
+			diff_player = abs(target_rect.x-self.bulletsRect[bi].x)+abs(target_rect.y-self.bulletsRect[bi].y)
+			if diff_player < diff_walls:
+				return True
+			else:
+				return False
+
+		mayHitBulletsIndex = target_rect.collidelistall(self.bulletsView)
+		if len(mayHitBulletsIndex) is 0:
+			return []
+		killerBulletsIndex = filter(lambda bi: _isKillerBullet(bi), mayHitBulletsIndex)
+		if len(killerBulletsIndex) is 0:
+			return []
+		
+		return killerBulletsIndex
+
+	"""
+	Tank will perform shoot first then move if actions given at same phare
+	@ ret
+		diff | False
+	"""
+	def willShootKing(self, dir_offset=0):
+		# self.nextMove, self.me, self.walls
+		global CASTLE,DIR,MOVE
+		log = logging.getLogger()
+
+		direction = (self.me[DIR]+dir_offset)%4
+
+		viewRect = self.getViewRect(self.me[REC], direction, 2)
+
+		if viewRect.colliderect(CASTLE):
+			log.info("Same line with King.")
+			return True
+		else:
+			return False
+
+	"""
+	@ret: < 0 is unable to passthrough
+		0: nothing
+		-1: collide
+		-2: out of range
+	"""
+	def passThroughCheck(self, rect):
+		# wall collide
+		ret = rect.collidelist(self.wallsRect)
+		if ret != -1: 
+			return -1
+		
+		# out of range
+		if rect.top<TOPY or rect.top>BOTY-24 or rect.left<TOPX or rect.left>BOTX-24:
+			return -2
+
+		return 0
+		
+			
+	def operations(self,p_mapinfo,c_control):
+		log = logging.getLogger()
+		debugPath = ["FRONT","RIGHT","BACK","LEFT"]
+
+		pathToGo = []
+
+		prioPathToGo = []
+
+		time_p = time.clock()
+		time_c = time.clock()
+		
 		while True:
 		#-----your ai operation,This code is a random strategy,please design your ai !!-----------------------
 
-			time.sleep(self.speed/3)
+			#time.sleep(TIME)
+			if  abs(time_c - time_p) < TIME:
+				time_c = time.clock()
+				continue
 			self.Get_mapInfo(p_mapinfo)
+			self.updateInfo()
+		
+		#-------------------------------
+			nextDirection = NON
+			nextShoot = 0
+			checkPoint = None
 
+			# nextMove
+			if skip_this:
+				#logging.info("Blocking")
+				time_c = time.clock()
+				continue 
 
-		#-----varible
-			players=self.mapinfo[3]
-			player = self.mapinfo[3][0];
-			
-			obstacle_rects = [];
-			# [[rect, direction, speed, type]]
-			enemies_list = self.mapinfo[1];
-			# [[rect, direction, speed]]
-			bullets=self.mapinfo[0]
-			
-			# player_mid = [player.rect.centerx, player.rect.centery]
-			player_mid=[]
-			player_mid.append(players[0][0][0]+13)
-			player_mid.append(players[0][0][1]+13)
-			
-			# player_left = player.rect.x
-			player_left=players[0][0][0]
-			# player_top = player.rect.y
-			player_top=players[0][0][1]
-			
-			lineup=-1
-			
-			# mapinfo2: tile info [[rect, type]]
-			# type: (TILE_EMPTY, TILE_BRICK, TILE_STEEL, TILE_WATER, TILE_GRASS, TILE_FROZE)
-			#0 for each tile
-			for rect in self.mapinfo[2]:
-				#1 put to obstacle: tile type of brick is not grass
-				# * THIS should push TILE_BRICK,TILE_STEEL,TILE_WATER only * @updateObstacleRects
-				if rect[1] != 4 or rect[1] < 1:
-					obstacle_rects.append(rect[0])
+			# Do Priority Actions
+			if len(prioPathToGo) != 0:
+				nextShoot = prioPathToGo[0][0]
+				nextDirection = prioPathToGo[0][1]
+				if self.Update_Strategy(c_control, nextShoot, nextDirection, 0):
+					if nextDirection is not NON:
+						# Dodge make A-Star* walk path dirty
+						pathToGo = []
+					del prioPathToGo[0]
+				continue
 
-			obs=[]
-			# mapinfo2: tile info [[rect, type]]
-			#0 for each tile
-			for t in self.mapinfo[2]:
-				#1 tile type is TILE_BRICK,TILE_STELL,TILE_WATER 
-				if t[1]<4:
-					obs.append(t[0])
-			# obstacle_rects not contains TILE_GRASS; [rect]
-			# obs contains only TILE_BRICK,TILE_STELL,TILE_WATER; [rect]
-			
-			# (DIR_UP, DIR_RIGHT, DIR_DOWN, DIR_LEFT)
+			assert len(prioPathToGo) is 0
 
-			#0 if has enemy do find target enemy + path to target enemy
-			if len(enemies_list) > 0 :
-				#1 choose enemy h'dist <80 with base, else least h'dist with player
-				#1 ret type rect
-				enemy_obj = self.enemy_select(player,enemies_list);
-				#1 get a string of path: [0-3]*
-				self.path = self.a_star(player,enemy_obj,obstacle_rects);
-				#1 sting of path deque --> move_dir_aStar or 4
-				if len(self.path)>0:
-					move_dir_aStar = int(self.path[0])
-				else:
-					move_dir_aStar =4
+			# DIE CHECK
+			killerBulletsIndex = self.bulletCheck(self.me[REC])
+			if len(killerBulletsIndex) != 0:
+				logging.info("killer bullet found")
+				actions = map(lambda kbi: self.performActions(kbi), killerBulletsIndex)
+				prioPathToGo += reduce(lambda i,j: i+j,actions)
 
-				# enemy_mid = [enemy.centerx, enemy.centery]
-				enemies_base_mid=[enemy_obj[0]+13,enemy_obj[1]+13]
-				#1 enemy.centerx--player.centerx < 13, same column
-				if abs(enemies_base_mid[0]-player_mid[0])<13:
-					#2 enemy is down side of player
-					if enemies_base_mid[1]>player_mid[1]:
-						lineup=2
-					#2 enemy is up side of player
+			if len(prioPathToGo) > 0:
+				continue
+
+			# check directions, shoot if enemy in shoot range
+			# shoot + direction decision (range(1): target lock; range(4): greedy)			
+			for i in range(4):
+				pointEnemyIndex = self.gunPointingEnemy(i)
+				if pointEnemyIndex != -1 and pointEnemyIndex is not None: 
+					#logging.info("Enemy %s Me"%debugPath[i])
+					if not self.willShootKing(1):
+						#logging.info("No King %s Me"%debugPath[i])
+						if i == 0:
+							nextShoot = 1
+						else:
+							_dir = (self.me[DIR] + i)%4
+							prioPathToGo.append([0, _dir])
+							prioPathToGo.append([1, NON])
 					else:
-						lineup=0
-				#1 enemy.centery--player.centery < 13, same row
-				#P same column will not response
-				if abs(enemies_base_mid[1]-player_mid[1])<13:
-					#2 enemy is right side of player
-					if enemies_base_mid[0]>player_mid[0]:
-						lineup=1
-					#2 enemy is left side of player
+						#logging.info("King maybe %s Me"%debugPath[i])
+						pointEnemy = self.enemiesRect[pointEnemyIndex]
+						enemyDiff  = abs(self.me[REC].x - pointEnemy.x) + abs(self.me[REC].y - pointEnemy.y)
+						kingDiff = abs(self.me[REC].x - CASTLE.x) + abs(self.me[REC].y - CASTLE.y)
+						if enemyDiff < kingDiff:
+							#logging.info("No King %s Me"%debugPath[i])
+							if i == 0:
+								nextShoot = 1
+							else:
+								_dir = (self.me[DIR] + i)%4
+								prioPathToGo.append([0, _dir])
+								prioPathToGo.append([1, NON])
+
+			if len(prioPathToGo) > 0:
+				continue
+
+			# direction decision
+			if len(prioPathToGo) is 0:
+				if pathToGo is None or len(pathToGo) is 0:
+					# find an enemy
+					target = self.getNextEnemy()
+					if target is not None:
+						#log.info("next target: (%d,%d)"%(target.x/16, target.y/16))
+						pathToGo = self.aStar(target)
 					else:
-						lineup=3
+						pathToGo = self.aStar(TOP_GEN)
 
-				debug = False
-				shoot,move_dir = self.bulletproof(bullets,player,enemies_list,self.speed,move_dir_aStar,lineup,obstacle_rects,debug)
-			#0 else do nothing
-			else:
-				move_dir=4
-				shoot = 0
+					if pathToGo is None:
+						# newly generated stucked
+						prioPathToGo.append([0, UP])
+						prioPathToGo.append([1, NON])
+						continue
+		
+			if pathToGo is not None and len(pathToGo) > 0:
+				nextDirection = pathToGo[len(pathToGo)-1][0]
+				checkPoint = pathToGo[len(pathToGo)-1][1]
+				usePathToGo = True
 
+			# move will guild to dead?
+			if usePathToGo:
+				newMeRect = self.newPosition(self.me[REC], self.me[DIR], nextDirection, self.me[SPD]*2)
+				killerBulletsIndex = self.bulletCheck(newMeRect)
+				if len(killerBulletsIndex) != 0:
+					logging.info("next move will guild to dead")
+					usePathToGo = False
+					nextDirection = NON
 
-			#-----------
-			# base shoot avoid
-			if player_mid[0]<12*16+32+17 and player_mid[0]>12*16-17 and (move_dir==2 or move_dir==0):
-				shoot=0
-			if player_mid[1]>24*16-20:
-				shoot=0
-			self.Update_Strategy(c_control,shoot,move_dir)
-		#------------------------------------------------------------------------------------------------------
+			#log.info("(shoot=%d, nextmove=%d)" % (nextShoot,nextDirection))
+			if self.Update_Strategy(c_control, nextShoot, nextDirection, 0):
+				if usePathToGo and len(pathToGo) > 0:
+					del pathToGo[len(pathToGo)-1]
 
-	def check_shoot(self,me,enemies):
-		enemy_rects = []
-		for enemy in enemies:
-			enemy_rects.append(enemy[0])
-		player_rect = pygame.Rect([me[0].left, me[0].top], [26, 400])
-		player_rect2 = pygame.Rect([me[0].left, me[0].top], [500, 26])
-		if player_rect.collidelist(enemy_rects) !=1 or player_rect2.collidelist(enemy_rects) !=1 :
-			return True;
-		return False;
-
-	"""
-	@params
-		@player: player_rect
-			* rect
-		@obstacle_rects:
-			* [rect], which type != GRASS
-	@return
-		@type: int
-			* -1 player_rect.(x,y) < (0,0), player_rect.(x,y) > (416-26, 416-26) #see Player.move or Enemy.move
-			* -2 for player_rect overlap with any obstacle_rects
-			* first collision index
-	"""
-	def check_barrier(self,player,obstacle_rects):
-		if player.top < 0 or player.left > (416 - 26) or player.top > (416 - 26) or (player.left < 0):
-			return -1;
-		idx = player.collidelist(obstacle_rects);
-		if idx == -1 :return -2
-		else: return idx;
-
-	"""
-	@params:
-		@player
-			* [rect, direction, speed, isSheild]
-		@enemy
-			* rect
-		@obstacle_rects
-			* [rect], which type != GRASS
-	"""
-	def a_star(self,player,enemy,obstacle_rects):
-		width = 26;
-		# key(str), val(int)
-		pathCollection = {"":0}
-		# key(str), val(rect)
-		pathPosition = {"":player[0]}
-		speed = 6#player[0][2]-24
-		path ="4";
-		# val(rect)
-		currentPosition = player[0];
-		found = False;
-		disable = []
-
-		while not found:
-			#0 if number of element in pathCollection not [1,400]
-			if (len(pathCollection)<1 or len(pathCollection)>400) :
-				#1 path would random generated, break loop
-				path = str(random.randint(0, 4))
-				print "path too long"
-				break;
-
-			# * loop1 -> path=""
-			path = min(pathCollection,key = pathCollection.get);
-			# * loop1 -> get(""), currentPosition=player.rect
-			currentPosition = pathPosition.get(path);
-			# * loop1 -> delete "":0
-			del pathCollection[path]
-			# * loop1 -> delete "":player.rect
-			del pathPosition[path]
-
-			#print currentPosition, "totally : ",len(pathCollection) , len(pathPosition) , speed;
-			
-			# * loop1 -> break if player.rect overlap choosen enemy.rect
-			if currentPosition.colliderect(enemy): 
-				print "break at overlap"
-				break;
-
-			# * loop1 -> disable[] queue player.rect which not overlap with choosen enemy.rect
-			disable.append(currentPosition)
-			# * loop1 -> lengh=0
-			length = len(path)
-
-			# * loop* --> new_position = currentPosition move to up
-			new_position = [currentPosition.left, currentPosition.top - speed]
-			player_rect = pygame.Rect(new_position, [width, width])
-			# * loop1 -> player_rect not no match, player_rect not in disable
-			if self.check_barrier(player_rect,obstacle_rects) == -2 and (player_rect not in disable):
-				# * loop1 -> length = 0 + speed = 6 + a.x--b.x + a.y--b.y
-				f = self.heuristic(player_rect,enemy,length,speed);
-				# * loop1 -> pathPosition queue ""+"0":player_up
-				pathPosition.update({path+"0":player_rect})
-				# * loop1 -> pathCollection queue ""+"0":6+a.x--b.x+a.y--b.y
-				pathCollection.update({path+"0":f})
-
-			# * loop* --> new_position = currentPosition move to right
-			new_position = [currentPosition.left+ speed, currentPosition.top]
-			player_rect = pygame.Rect(new_position, [width, width])
-			if self.check_barrier(player_rect,obstacle_rects) == -2 and (player_rect not in disable):
-				f = self.heuristic(player_rect,enemy,length,speed);
-				pathPosition.update({path+"1":player_rect})
-				pathCollection.update({path+"1":f})
-
-			# * loop* --> new_position = currentPosition move to down
-			new_position = [currentPosition.left, currentPosition.top + speed]
-			player_rect = pygame.Rect(new_position, [width, width])
-			if self.check_barrier(player_rect,obstacle_rects) == -2 and (player_rect not in disable):
-				f = self.heuristic(player_rect,enemy,length,speed);
-				pathPosition.update({path+"2":player_rect})
-				pathCollection.update({path+"2":f})
-
-			# * loop* --> new_position = currentPosition move to left
-			new_position = [currentPosition.left-speed, currentPosition.top]
-			player_rect = pygame.Rect(new_position, [width, width])
-			if self.check_barrier(player_rect,obstacle_rects) == -2 and (player_rect not in disable):
-				f = self.heuristic(player_rect,enemy,length,speed);
-				pathPosition.update({path+"3":player_rect})
-				pathCollection.update({path+"3":f})
-
-		# path [0-3]*
-		# (UP, RIGHT, DOWN, LEFT) = (0,1,2,3)
-		print path
-		return path;
-
-	"""
-	@params:
-		@player:
-			* rect
-		@enemy:
-			* rect
-		@length:
-		@speed:
-	@return
-		@type:
-			* int
-		@value:
-			* length+speed + player.x--enemy.x + player.y--enemy.y
-	"""
-	def heuristic(self,player,enemy,length,speed):
-		g = length*speed;
-		h = abs(player.left-enemy.left)+ abs(player.top-enemy.top);
-		return g+h;
-
-	"""
-	@ param:
-		@ player: [rect, direction, speed, isSheild]
-		@ enemies: [[rect, direction, speed, type]]
-	@ explaination: 
-		* return enemy.rect in piority
-		* least h'dist which <80 with base --> h'dist least with player
-	"""
-	def enemy_select(self,player,enemies):
-		# enemies[0].rect(x,y,w,h)
-		result_base = enemies[0][0]
-		distance_base = 999999;
-		#0 choose a enemy which h'distance is too close to base
-		for enemy in enemies:
-			#1 h'distance = enemy.rect.x--base.rect.x + enemy.rect.y--base.rect.y
-			h = abs(enemy[0].left- 12*16)+abs(enemy[0].top-24*16);
-			if h < distance_base:
-				distance_base = h;
-				result_base = enemy[0];
-
-		result_me = enemies[0][0]
-		distance_me = 999999;
-		#0 choose a enemy which h'distance is too close to player
-		for enemy in enemies:
-			#1 h'distance = enemy.rect.x--player.rect.x + enemy.rect.y--player.rect.y
-			h = abs(enemy[0].left- player[0].left)+abs(enemy[0].top-player[0].top);
-			if h < distance_me:
-				distance_me = h;
-				result_me = enemy[0];
-
-		# choose enemy h'distance < 80 with base
-		# else choose h'distance least with player
-		if distance_base<80:
-			result=result_base
-		else:
-			result=result_me
-		return result;
-
-	"""
-	@ explanation:
-		* return enemy.rect that h'distance smallest with base
-	"""
-	def whoDangerous(self,enemies):
-		result = enemies[0][0]
-		distance = 999999;
-		for enemy in enemies:
-			h = abs(enemy[0].left- 12*16)+abs(enemy[0].top-24*16);
-			if h < distance:
-				distance = h;
-				result = enemy[0];
-		return result;
+			time_p = time_c
+			time_c = time.clock()
 
 	def Get_mapInfo(self,p_mapinfo):
 		if p_mapinfo.empty()!=True:
 			try:
 				self.mapinfo = p_mapinfo.get(False)
+				skip_this=False
 			except Queue.Empty:
 				skip_this=True
 
 	def Update_Strategy(self,c_control,shoot,move_dir,keep_action=1):
-		if c_control.empty() ==True:
+		if c_control.empty() == True:
 			c_control.put([shoot,move_dir,keep_action])
 			return True
-		else:
+		else: 
 			return False
-
