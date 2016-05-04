@@ -2,7 +2,7 @@
 # coding=utf-8
 
 import os, pygame, time, random, uuid, sys
-import ai2 as ai
+import ai
 import copy, random
 import threading
 import multiprocessing
