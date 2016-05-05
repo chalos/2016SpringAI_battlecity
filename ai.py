@@ -284,7 +284,7 @@ class ai_agent():
 		[pygame.Rect]
 	"""
 	def getEnemiesNearCastle(self):
-		threshold = 416/3
+		threshold = 416/3*2
 		enemies = filter(lambda enemy: enemy.top>threshold, self.enemiesRect)
 		return enemies
 
@@ -441,14 +441,13 @@ class ai_agent():
 		prioPathToGo = []
 
 		time_p = time.clock()
-		time_c = time.clock()
 		
 		while True:
 		#-----your ai operation,This code is a random strategy,please design your ai !!-----------------------
 
 			#time.sleep(TIME)
+			time_c = time.clock()
 			if  abs(time_c - time_p) < TIME:
-				time_c = time.clock()
 				continue
 			self.Get_mapInfo(p_mapinfo)
 			self.updateInfo()
@@ -461,7 +460,7 @@ class ai_agent():
 			# nextMove
 			if skip_this:
 				#logging.info("Blocking")
-				time_c = time.clock()
+				time_p = time_c
 				continue 
 
 			# Do Priority Actions
@@ -473,6 +472,7 @@ class ai_agent():
 						# Dodge make A-Star* walk path dirty
 						pathToGo = []
 					del prioPathToGo[0]
+				time_p = time_c
 				continue
 
 			assert len(prioPathToGo) is 0
@@ -485,6 +485,7 @@ class ai_agent():
 				prioPathToGo += reduce(lambda i,j: i+j,actions)
 
 			if len(prioPathToGo) > 0:
+				time_p = time_c
 				continue
 
 			# check directions, shoot if enemy in shoot range
@@ -555,7 +556,6 @@ class ai_agent():
 					del pathToGo[len(pathToGo)-1]
 
 			time_p = time_c
-			time_c = time.clock()
 
 	def Get_mapInfo(self,p_mapinfo):
 		if p_mapinfo.empty()!=True:
